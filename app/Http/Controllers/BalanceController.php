@@ -27,7 +27,13 @@ class BalanceController extends Controller
 
             $spending = Spending::where('user_id', Auth::user()->id)
                 ->latest()
-                ->first('planned_spending');
+                ->first();
+
+            if (!$spending) {
+                $spending = new Spending();
+                $spending->user_id = Auth::user()->id;
+                $spending->planned_spending = 0; // padrão
+            }
 
             $real_spending = Transaction::whereMonth('date', now()->month)
                 ->whereYear('date', now()->year)

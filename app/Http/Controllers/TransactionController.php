@@ -20,7 +20,7 @@ class TransactionController extends Controller
             'transaction_description' => ['required', 'string', 'max:50'],
             'category_id' => ['required'],
             'category_description' => ['required_if:category_id,0', 'string', 'max:50'],
-            'date' => ['required', 'date'],
+            'date' => ['required', 'date', 'before_or_equal:today'],
             'type_id' => ['required', 'min:1', 'max:2'],
             'transaction_value' => ['required', 'decimal:0,2', 'min:1'],
             'payment_method_id' => ['required_if:type_id,2', 'prohibited_if:type_id,1'],
@@ -149,10 +149,11 @@ class TransactionController extends Controller
                 ->where('user_id', Auth::id())
                 ->get();
 
-            $most_expensive_transaction = Transaction::orderBy('transaction_value', 'desc')
-                ->where(['user_id'=> Auth::id(),
-                    'type_id' => 2])
-                ->first()->transaction_value;
+            $most_expensive_transaction = Transaction::where([
+                    'user_id' => Auth::id(),
+                    'type_id' => 2,
+                ])
+                ->max('transaction_value') ?? 0;
 
             $response = ['data' => ['transactions' => []], 'most_expensive' => $most_expensive_transaction, 'total' => count($transactions)];
 

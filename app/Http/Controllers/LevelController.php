@@ -13,29 +13,27 @@ class LevelController extends Controller
     {
         $user = User::find(Auth::id());
 
-        if(is_null($user->missions()->find($mission_id))) {
+        if (!$user) return;
 
-            $user->missions()->attach($mission_id);
-    
-            $user->update([
-                'user_xp' => $user->user_xp + Mission::find($mission_id)->mission_xp
-            ]);
+        // garante que a missão existe
+        $mission = Mission::find($mission_id);
+        if (!$mission) return;
 
-            if($user->user_xp >= 125) {
-                $user->update([
-                    'level_id' => 2
-                ]);
-            }
-            if($user->user_xp >= 250) {
-                $user->update([
-                    'level_id' => 3
-                ]);
-            }
-            if($user->user_xp >= 500) {
-                $user->update([
-                    'level_id' => 4
-                ]);
-            }
+        // evita repetir missão
+        if ($user->missions()->find($mission_id)) return;
+
+        $user->missions()->attach($mission_id);
+
+        $user->update([
+            'user_xp' => $user->user_xp + $mission->mission_xp,
+        ]);
+
+        if ($user->user_xp >= 500) {
+            $user->update(['level_id' => 4]);
+        } elseif ($user->user_xp >= 250) {
+            $user->update(['level_id' => 3]);
+        } elseif ($user->user_xp >= 125) {
+            $user->update(['level_id' => 2]);
         }
     }
 }
