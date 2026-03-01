@@ -15,9 +15,11 @@ class CardController extends Controller
     {
         $request->validate([
             'card_description' => ['required', 'string', 'min:2', 'max:50'],
-            'flag_id' => ['required'],
-            'expiration' => ['required', 'integer', 'min:1', 'max:31'],
-            'closure' => ['required', 'integer', 'min:1', 'max:31']
+            'flag_id' => ['required', 'exists:flags,id'],
+            'expiration' => ['required', 'integer', 'min:1', 'max:31', 'gte:closure'],
+            'closure' => ['required', 'integer', 'min:1', 'max:31'],
+        ], [ 
+             'expiration.gte' => 'O vencimento não pode ser anterior ao fechamento.',
         ]);
 
 

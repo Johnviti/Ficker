@@ -31,7 +31,7 @@ WORKDIR /app
 COPY . /app
 
 # Instala dependências da aplicação no build
-RUN composer install --no-interaction --optimize-autoloader --no-dev
+RUN composer install --no-interaction --optimize-autoloader --dev
 
 # Garante diretórios necessários do Laravel
 RUN mkdir -p /app/storage/logs \

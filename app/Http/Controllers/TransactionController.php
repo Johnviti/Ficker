@@ -18,7 +18,7 @@ class TransactionController extends Controller
 
         $request->validate([
             'transaction_description' => ['required', 'string', 'max:50'],
-            'category_id' => ['required'],
+            'category_id' => ['required', 'integer', 'min:0'],
             'category_description' => ['required_if:category_id,0', 'string', 'max:50'],
             'date' => ['required', 'date', 'before_or_equal:today'],
             'type_id' => ['required', 'min:1', 'max:2'],
@@ -59,6 +59,24 @@ class TransactionController extends Controller
             $category = Category::find($request->category_id);
         }
 
+        if (!$category) {
+            return response()->json([
+                'message' => 'Categoria não encontrada.',
+                'errors' => [
+                    'category_id' => ['Categoria não encontrada.']
+                ]
+            ], 404);
+        }
+
+        if ((int) $category->type_id !== (int) $request->type_id) {
+            return response()->json([
+                'message' => 'A categoria selecionada não corresponde ao tipo da transação.',
+                'errors' => [
+                    'category_id' => ['A categoria selecionada não corresponde ao tipo da transação.']
+                ]
+            ], 422);
+        }
+
         // Cadastrando transação
 
         if (is_null($request->installments)) { // Entrada e saída sem parcelas
@@ -77,7 +95,7 @@ class TransactionController extends Controller
             
             $response = [
                 'data' => [
-                    'trasanction' => $transaction
+                    'transaction' => $transaction
                 ]
             ];
 
