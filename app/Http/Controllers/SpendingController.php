@@ -7,6 +7,7 @@ use Illuminate\Http\Request;
 use App\Models\Spending;
 use Illuminate\Support\Facades\Auth;
 use App\Models\Transaction;
+use Illuminate\Validation\ValidationException;
 
 class SpendingController extends Controller
 {
@@ -14,7 +15,11 @@ class SpendingController extends Controller
     {
         try {
             $request->validate([
-                'planned_spending' => ['required', 'min:1']
+                'planned_spending' => ['required', 'numeric', 'min:1']
+            ], [
+                'planned_spending.required' => 'Informe o gasto planejado.',
+                'planned_spending.numeric' => 'O gasto planejado deve ser numérico.',
+                'planned_spending.min' => 'O gasto planejado deve ser maior que zero.',
             ]);
 
             $spending = Spending::create([
@@ -22,23 +27,22 @@ class SpendingController extends Controller
                 'planned_spending' => $request->planned_spending,
             ]);
 
-            $response = [
+            return response()->json([
                 'spending' => $spending
-            ];
+            ], 201);
 
-            return response()->json($response, 201);
+        } catch (ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
-            $errorMessage = 'Erro na busca de gastos planejados.';
-            $response = [
+            return response()->json([
                 'data' => [
-                    'message' => $errorMessage,
+                    'message' => 'Erro na criação do gasto planejado.',
                     'error' => $e->getMessage()
                 ]
-            ];
-
-            return response()->json($response, 500);
+            ], 500);
         }
     }
+
 
     public function showSpending(): JsonResponse
     {
@@ -70,51 +74,77 @@ class SpendingController extends Controller
     public function update(Request $request): JsonResponse
     {
         try {
-            Spending::find($request->id)->update($request->all());
+            $request->validate([
+                'id' => ['required', 'integer'],
+                'planned_spending' => ['required', 'numeric', 'min:1']
+            ], [
+                'planned_spending.required' => 'Informe o gasto planejado.',
+                'planned_spending.numeric' => 'O gasto planejado deve ser numérico.',
+                'planned_spending.min' => 'O gasto planejado deve ser maior que zero.',
+            ]);
 
             $spending = Spending::find($request->id);
 
-            $response = [
+            if (!$spending) {
+                return response()->json([
+                    'data' => [
+                        'message' => 'Gasto planejado não encontrado.'
+                    ]
+                ], 404);
+            }
+
+            $spending->update($request->only('planned_spending'));
+
+            return response()->json([
                 'data' => [
                     'spending' => $spending
                 ]
-            ];
-
-            return response()->json($response, 200);
+            ], 200);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
-            $errorMessage = 'Erro ao atualizar os gastos planejados.';
-            $response = [
+            return response()->json([
                 'data' => [
-                    'message' => $errorMessage,
+                    'message' => 'Erro ao atualizar os gastos planejados.',
                     'error' => $e->getMessage()
                 ]
-            ];
-
-            return response()->json($response, 500);
+            ], 500);
         }
     }
+
     public function destroy(Request $request): JsonResponse
     {
         try {
-            Spending::find($request->id)->delete();
+            $request->validate([
+                'id' => ['required', 'integer']
+            ]);
 
-            $response = [
+            $spending = Spending::find($request->id);
+
+            if (!$spending) {
+                return response()->json([
+                    'data' => [
+                        'message' => 'Gasto planejado não encontrado.'
+                    ]
+                ], 404);
+            }
+
+            $spending->delete();
+
+            return response()->json([
                 'data' => [
                     'message' => 'Gasto planejado deletado com sucesso.'
                 ]
-            ];
-
-            return response()->json($response, 200);
+            ], 200);
+        } catch (\Illuminate\Validation\ValidationException $e) {
+            throw $e;
         } catch (\Exception $e) {
-            $errorMessage = 'Erro ao deletar os gastos planejados.';
-            $response = [
+            return response()->json([
                 'data' => [
-                    'message' => $errorMessage,
+                    'message' => 'Erro ao deletar os gastos planejados.',
                     'error' => $e->getMessage()
                 ]
-            ];
-
-            return response()->json($response, 500);
+            ], 500);
         }
     }
 
@@ -177,7 +207,11 @@ class SpendingController extends Controller
                 ];
 
             } else {
-
+                return response()->json([
+                    'data' => [
+                    'message' => 'Parâmetro sort inválido. Use day, month ou year.'
+                    ]
+                ], 422);
             }
 
             return response()->json($response, 200);
