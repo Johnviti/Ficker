@@ -168,13 +168,13 @@ class CardController extends Controller
 
             $response = [
                 'data' => [
-                    'installment' => $installment
+                    'installments' => $response
                 ]
             ];
 
             return response()->json($response, 200);
         } catch (\Exception $e) {
-            $errorMessage = "Erro: " + $e;
+            $errorMessage = "Erro: " . $e->getMessage();
             $response = [
                 "data" => [
                     "error" => $errorMessage
