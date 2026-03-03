@@ -188,7 +188,7 @@ class TransactionController extends Controller
             $response = ['data' => ['transactions' => []], 'most_expensive' => $most_expensive_transaction, 'total' => count($transactions)];
 
             foreach($transactions as $transaction) {
-                $description = Category::find($transaction->category_id)->category_description;
+                $description = Category::find($transaction->category_id)?->category_description;
                 $transaction->category_description = $description;
                 array_push($response['data']['transactions'], $transaction);
             }
@@ -248,7 +248,7 @@ class TransactionController extends Controller
             $response = ['data' => ['transactions' => []], 'total' => count($transactions)];
 
             foreach ($transactions  as $transaction) {
-                $description = Category::find($transaction->category_id)->category_description;
+                $description = Category::find($transaction->category_id)?->category_description;
                 $transaction->category_description = $description;
                 array_push($response['data']['transactions'], $transaction);
             }
@@ -278,7 +278,7 @@ class TransactionController extends Controller
 
             $response = ['data' => ['transactions' => []]];
             foreach ($transactions as $transaction) {
-                $description = Category::find($transaction->category_id)->category_description;
+                $description = Category::find($transaction->category_id)?->category_description;
                 $transaction->category_description = $description;
                 array_push($response['data']['transactions'], $transaction);
             }
@@ -316,37 +316,74 @@ class TransactionController extends Controller
 
             $request->validate([
                 'transaction_description' => ['string', 'max:50'],
+                'category_id' => ['integer', 'min:0'],
+                'category_description' => ['required_if:category_id,0', 'string', 'max:50'],
                 'date' => ['date', 'before_or_equal:today'],
                 'transaction_value' => ['numeric', 'min:0.01'],
                 'payment_method_id' => ['integer', 'min:1', 'max:4'],
                 'installments' => ['integer', 'min:1'],
             ]);
 
-            Transaction::find($request->id)->update($request->only([
-                'transaction_description',
-                'category_id',
-                'date',
-                'transaction_value',
-                'payment_method_id',
-                'installments'
-            ]));
+            $transaction = Transaction::find($request->id);
+
+            $categoryIdToUpdate = $transaction->category_id;
+
+            // Tratando categoria no update com a mesma lógica do store
+            if (!is_null($request->category_id)) {
+
+                if ((int) $request->category_id === 0) {
+                    $category = CategoryController::storeInTransaction(
+                        $request->category_description,
+                        $transaction->type_id
+                    );
+                } else {
+                    $category = Category::find($request->category_id);
+                }
+
+                if (!$category) {
+                return     response()->json([
+                        'message' => 'Categoria não encontrada.',
+                        'errors' => [
+                            'category_id' => ['Categoria não encontrada.']
+                        ]
+                    ], 404);
+                }
+
+                if ((int) $category->type_id !== (int) $transaction->type_id) {
+                return     response()->json([
+                        'message' => 'A categoria selecionada não corresponde ao tipo da transação.',
+                        'errors' => [
+                            'category_id' => ['A categoria selecionada não corresponde ao tipo da transação.']
+                        ]
+                    ], 422);
+                }
+
+                $categoryIdToUpdate = $category->id;
+            }
+
+            $transaction->update([
+                'transaction_description' => $request->transaction_description ?? $transaction->transaction_description,
+                'category_id' => $categoryIdToUpdate,
+                'date' => $request->date ?? $transaction->date,
+                'transaction_value' => $request->transaction_value ?? $transaction->transaction_value,
+                'payment_method_id' => $request->payment_method_id ?? $transaction->payment_method_id,
+                'installments' => $request->installments ?? $transaction->installments,
+            ]);
 
             $transaction = Transaction::find($request->id);
 
-            if($transaction->payment_method_id == 4) {
+            if ($transaction->payment_method_id == 4) {
 
-                if(!(is_null($request->installments))) {
-
-                    $installments = Installment::where('transaction_id', $request->id)->get();
-                    $transaction = Transaction::find($request->id);
+                if (!(is_null($request->installments))) {
 
                     Installment::where('transaction_id', $request->id)->delete();
                     $date = $transaction->date;
+
                     for ($i = 1; $i <= $request->installments; $i++) {
 
                         Installment::create([
                             'transaction_id' => $request->id,
-                            'installment_description' => $transaction->transaction_description.' '.$i.'/'.$request->installments,
+                            'installment_description' => $transaction->transaction_description . ' ' . $i . '/' . $request->installments,
                             'installment_value' => $transaction->transaction_value / $request->installments,
                             'card_id' => $transaction->card_id,
                             'pay_day' => $date
@@ -357,38 +394,38 @@ class TransactionController extends Controller
                     }
                 }
 
-                if(!(is_null($request->transaction_value))) {
+                if (!(is_null($request->transaction_value))) {
 
-                    Installment::where('transaction_id', $request->id)->get()->each(function($installment) use ($request) {
-                        
+                    Installment::where('transaction_id', $request->id)->get()->each(function ($installment) use ($request) {
+
                         $transaction = Transaction::find($request->id);
-    
+
                         $installment->update([
                             'installment_value' => $request->transaction_value / $transaction->installments
                         ]);
                     });
                 }
 
-                if(!(is_null($request->transaction_description))) {
+                if (!(is_null($request->transaction_description))) {
 
                     $count = 1;
-                    Installment::where('transaction_id', $request->id)->get()->each(function($installment) use ($request, &$count){
+                    Installment::where('transaction_id', $request->id)->get()->each(function ($installment) use ($request, &$count) {
 
                         $transaction = Transaction::find($request->id);
-    
+
                         $installment->update([
-                            'installment_description' => $request->transaction_description.' '.$count.'/'.$transaction->installments,
+                            'installment_description' => $request->transaction_description . ' ' . $count . '/' . $transaction->installments,
                         ]);
 
                         $count++;
                     });
                 }
 
-                if(!(is_null($request->date))) {
+                if (!(is_null($request->date))) {
 
                     $date = $request->date;
-                    Installment::where('transaction_id', $request->id)->get()->each(function($installment) use (&$date){
-    
+                    Installment::where('transaction_id', $request->id)->get()->each(function ($installment) use (&$date) {
+
                         $installment->update([
                             'pay_day' => $date,
                         ]);

@@ -18,13 +18,12 @@ class BalanceController extends Controller
             $month = now()->month;
             $year = now()->year;
 
-            $incomes = Transaction::where([
-                'user_id' => $userId,
-                'type_id' => 1,
-            ])->sum('transaction_value');
+            $incomes = Transaction::where('user_id', $userId)
+                ->where('type_id', 1)
+                ->sum('transaction_value');
 
-            // Saídas comuns: tudo que é saída e não é cartão de crédito
-            $regularOutgoings = Transaction::where('user_id', $userId)
+            // Saídas efetivamente pagas no histórico geral
+            $paidOutgoings = Transaction::where('user_id', $userId)
                 ->where('type_id', 2)
                 ->where(function ($query) {
                     $query->whereNull('payment_method_id')
@@ -32,8 +31,10 @@ class BalanceController extends Controller
                 })
                 ->sum('transaction_value');
 
-            // Gasto real do mês com saídas comuns
-            $regularMonthlySpending = Transaction::where('user_id', $userId)
+            $balance = $incomes - $paidOutgoings;
+
+            // Gasto real do mês = o que efetivamente foi pago no mês
+            $real_spending = Transaction::where('user_id', $userId)
                 ->where('type_id', 2)
                 ->whereMonth('date', $month)
                 ->whereYear('date', $year)
@@ -42,28 +43,6 @@ class BalanceController extends Controller
                         ->orWhere('payment_method_id', '!=', 4);
                 })
                 ->sum('transaction_value');
-
-            // Parcelas do cartão que vencem no mês atual
-            $cardMonthlySpending = Installment::whereMonth('pay_day', $month)
-                ->whereYear('pay_day', $year)
-                ->whereIn('card_id', function ($query) use ($userId) {
-                    $query->select('id')
-                        ->from('cards')
-                        ->where('user_id', $userId);
-                })
-                ->sum('installment_value');
-
-            $real_spending = $regularMonthlySpending + $cardMonthlySpending;
-
-            // Balance geral considerando cartão pelo fluxo de parcelas
-            $totalCardCommitted = Installment::whereIn('card_id', function ($query) use ($userId) {
-                    $query->select('id')
-                        ->from('cards')
-                        ->where('user_id', $userId);
-                })
-                ->sum('installment_value');
-
-            $balance = $incomes - ($regularOutgoings + $totalCardCommitted);
 
             $spending = Spending::where('user_id', $userId)
                 ->latest()
