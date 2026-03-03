@@ -272,11 +272,12 @@ class TransactionController extends Controller
         try {
 
             $transactions = Transaction::where([
-                'card_id' => $id
+                'card_id' => $id,
+                'user_id' => Auth::user()->id
             ])->get();
 
             $response = ['data' => ['transactions' => []]];
-            foreach ($transactions  as $transaction) {
+            foreach ($transactions as $transaction) {
                 $description = Category::find($transaction->category_id)->category_description;
                 $transaction->category_description = $description;
                 array_push($response['data']['transactions'], $transaction);
