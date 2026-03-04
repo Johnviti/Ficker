@@ -8,18 +8,30 @@ use App\Models\Card;
 use App\Models\Flag;
 use App\Models\Installment;
 use Illuminate\Support\Facades\Auth;
+use Carbon\Carbon;
 
 class CardController extends Controller
 {
+    private function nextInvoicePayDay(Card $card): ?string
+    {
+        $today = Carbon::today()->toDateString();
+
+        // Próximo pay_day >= hoje
+        return Installment::where('card_id', $card->id)
+            ->whereDate('pay_day', '>=', $today)
+            ->orderBy('pay_day', 'asc')
+            ->value('pay_day'); // retorna a primeira data
+    }
+
     public function store(Request $request): JsonResponse
     {
         $request->validate([
             'card_description' => ['required', 'string', 'min:2', 'max:50'],
             'flag_id' => ['required', 'exists:flags,id'],
-            'expiration' => ['required', 'integer', 'min:1', 'max:31', 'gte:closure'],
+            'expiration' => ['required', 'integer', 'min:1', 'max:31', 'different:closure'],
             'closure' => ['required', 'integer', 'min:1', 'max:31'],
         ], [ 
-             'expiration.gte' => 'O vencimento não pode ser anterior ao fechamento.',
+             'expiration.different' => 'O vencimento não pode ser no mesmo dia do fechamento.',
         ]);
 
 
@@ -87,100 +99,82 @@ class CardController extends Controller
     public function invoice($id)
     {
         try {
-            $card = Card::findOrFail($id);
-            $installments = Installment::where([
-                'card_id' => $card->id
-            ])->get();
-            $date_now = date('Y-m');
-            $day_now = date('d');
-            $invoice = 0;
-            foreach ($installments as $installment) {
-                $new_installment = date('Y-m', strtotime($installment->pay_day));
-                if ($new_installment == $date_now and $day_now < $card->closure) {
-                    $invoice += $installment->installment_value;
-                }
+            $card = Card::where('user_id', Auth::id())->findOrFail($id);
+
+            $nextPayDay = $this->nextInvoicePayDay($card);
+
+            if (!$nextPayDay) {
+                return 0;
             }
 
-            return $invoice;
+            return (float) Installment::where('card_id', $card->id)
+                ->whereDate('pay_day', $nextPayDay)
+                ->sum('installment_value');
 
         } catch (\Exception $e) {
-            $errorMessage = "Erro: " + $e;
-            $response = [
-                "data" => [
-                    "error" => $errorMessage
-                ]
-            ];
-            return response()->json($response, 404);
+            return 0;
         }
     }
 
     public function showCardInvoice($id): JsonResponse
     {
         try {
-            $card = Card::findOrFail($id);
-            $installments = Installment::where([
-                'card_id' => $card->id
-            ])->get();
-            $date_now = date('Y-m');
-            $day_now = date('d');
+            $card = Card::where('user_id', Auth::id())->findOrFail($id);
+
+            $nextPayDay = $this->nextInvoicePayDay($card);
+
             $invoice = 0;
-            foreach ($installments as $installment) {
-                $new_installment = date('Y-m', strtotime($installment->pay_day));
-                if ($new_installment == $date_now and $day_now < $card->closure) {
-                    $invoice += $installment->installment_value;
-                }
+
+            if ($nextPayDay) {
+                $invoice = Installment::where('card_id', $card->id)
+                    ->whereDate('pay_day', $nextPayDay)
+                    ->sum('installment_value');
             }
 
-            $response = [
+            return response()->json([
                 "data" => [
-                    "invoice" => $invoice
+                    "invoice" => $invoice,
+                    "pay_day" => $nextPayDay
                 ]
-            ];
-            return response()->json($response, 200);
+            ], 200);
+
         } catch (\Exception $e) {
-            $errorMessage = "Erro: " + $e;
-            $response = [
+            return response()->json([
                 "data" => [
-                    "error" => $errorMessage
+                    "error" => $e->getMessage()
                 ]
-            ];
-            return response()->json($response, 404);
+            ], 404);
         }
     }
 
     public function showInvoiceInstallments($id): JsonResponse
     {
-
         try {
-            $card = Card::findOrFail($id);
-            $installments = Installment::where([
-                'card_id' => $card->id
-            ])->get();
-            $date_now = date('Y-m');
-            $day_now = date('d');
-            $response = [];
-            foreach ($installments as $installment) {
-                $new_installment = date('Y-m', strtotime($installment->pay_day));
-                if ($new_installment == $date_now and $day_now < $card->closure) {
-                    array_push($response, $installment);
-                }
+            $card = Card::where('user_id', Auth::id())->findOrFail($id);
+
+            $nextPayDay = $this->nextInvoicePayDay($card);
+
+            $installments = [];
+
+            if ($nextPayDay) {
+                $installments = Installment::where('card_id', $card->id)
+                    ->whereDate('pay_day', $nextPayDay)
+                    ->get();
             }
 
-            $response = [
-                'data' => [
-                    'installments' => $response
-                ]
-            ];
-
-            return response()->json($response, 200);
-        } catch (\Exception $e) {
-            $errorMessage = "Erro: " . $e->getMessage();
-            $response = [
+            return response()->json([
                 "data" => [
-                    "error" => $errorMessage
+                    "pay_day" => $nextPayDay,
+                    "installments" => $installments
                 ]
-            ];
-            return response()->json($response, 404);
+            ], 200);
+
+        } catch (\Exception $e) {
+            return response()->json([
+                "data" => [
+                    "error" => $e->getMessage()
+                ]
+            ], 404);
         }
     }
 }

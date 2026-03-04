@@ -10,9 +10,62 @@ use App\Models\Category;
 use App\Models\Card;
 use App\Models\Installment;
 use Illuminate\Support\Facades\DB;
+use Carbon\Carbon;
 
 class TransactionController extends Controller
 {
+
+    private function resolveFirstInstallmentPayDay(string $transactionDate, Card $card): string
+    {
+        $purchaseDate = Carbon::parse($transactionDate)->startOfDay();
+
+        $closureDay = (int) $card->closure;
+        $expirationDay = (int) $card->expiration;
+
+        $closureThisMonth = Carbon::create(
+            $purchaseDate->year,
+            $purchaseDate->month,
+            min($closureDay, $purchaseDate->daysInMonth),
+            0, 0, 0
+        );
+
+        // Caso 1: vencimento depois do fechamento no mesmo mês
+        if ($expirationDay > $closureDay) {
+            if ($purchaseDate->lte($closureThisMonth)) {
+                $baseMonth = $purchaseDate->copy();
+            } else {
+                $baseMonth = $purchaseDate->copy()->addMonth();
+            }
+        } else {
+            // Caso 2: vencimento ocorre no mês seguinte ao fechamento
+            if ($purchaseDate->lte($closureThisMonth)) {
+                $baseMonth = $purchaseDate->copy()->addMonth();
+            } else {
+                $baseMonth = $purchaseDate->copy()->addMonths(2);
+            }
+        }
+
+        $dueDate = Carbon::create(
+            $baseMonth->year,
+            $baseMonth->month,
+            min($expirationDay, $baseMonth->daysInMonth),
+            0, 0, 0
+        );
+
+        return $dueDate->toDateString();
+    }
+
+    private function buildInstallmentDates(string $firstPayDay, int $installments): array
+    {
+        $dates = [];
+        $baseDate = Carbon::parse($firstPayDay)->startOfDay();
+
+        for ($i = 0; $i < $installments; $i++) {
+            $dates[] = $baseDate->copy()->addMonths($i)->toDateString();
+        }
+
+        return $dates;
+    }
 
     public function store(Request $request): JsonResponse
     {
@@ -129,41 +182,30 @@ class TransactionController extends Controller
             ]);
 
             $response = [];
-            $pay_day = $request->date;
-            $new_pay_day_formated = $pay_day;
             $installments = (int) $request->installments;
             $transactionValue = (float) $request->transaction_value;
+
+            $card = Card::where('user_id', Auth::id())->findOrFail($request->card_id);
+
+            $firstPayDay = $this->resolveFirstInstallmentPayDay($request->date, $card);
+            $payDays = $this->buildInstallmentDates($firstPayDay, $installments);
+
             $value = (float) number_format($transactionValue / $installments, 2, '.', '');
             $firstInstallment = $transactionValue - ($value * ($installments - 1));
             $firstInstallment = (float) number_format($firstInstallment, 2, '.', '');
 
             for ($i = 1; $i <= $installments; $i++) {
+                $installmentValue = ($i === 1) ? $firstInstallment : $value;
 
-                if ($i == 1) {
-                    $installment = Installment::create([
-                        'transaction_id' => $transaction->id,
-                        'installment_description' => $request->transaction_description . ' ' . $i . '/' . $installments,
-                        'installment_value' => $firstInstallment,
-                        'card_id' => $request->card_id,
-                        'pay_day' => $pay_day
-                    ]);
+                $installment = Installment::create([
+                    'transaction_id' => $transaction->id,
+                    'installment_description' => $request->transaction_description . ' ' . $i . '/' . $installments,
+                    'installment_value' => $installmentValue,
+                    'card_id' => $request->card_id,
+                    'pay_day' => $payDays[$i - 1]
+                ]);
 
-                    array_push($response, $installment);
-                } else {
-                    $new_pay_day = strtotime('+1 months', strtotime($pay_day));
-                    $new_pay_day_formated = date('Y-m-d', $new_pay_day);
-                    $installment = Installment::create([
-                        'transaction_id' => $transaction->id,
-                        'installment_description' => $request->transaction_description . ' ' . $i . '/' . $installments,
-                        'installment_value' => $value,
-                        'card_id' => $request->card_id,
-                        'pay_day' => $new_pay_day_formated
-                    ]);
-
-                    array_push($response, $installment);
-                }
-
-                $pay_day = $new_pay_day_formated;
+                $response[] = $installment;
             }
 
             LevelController::completeMission(4);
@@ -377,20 +419,27 @@ class TransactionController extends Controller
                 if (!(is_null($request->installments))) {
 
                     Installment::where('transaction_id', $request->id)->delete();
-                    $date = $transaction->date;
 
-                    for ($i = 1; $i <= $request->installments; $i++) {
+                    $card = Card::where('user_id', Auth::id())->findOrFail($transaction->card_id);
+                    $installmentsCount = (int) $request->installments;
+                    $firstPayDay = $this->resolveFirstInstallmentPayDay($transaction->date, $card);
+                    $payDays = $this->buildInstallmentDates($firstPayDay, $installmentsCount);
+
+                    $transactionValue = (float) $transaction->transaction_value;
+                    $value = (float) number_format($transactionValue / $installmentsCount, 2, '.', '');
+                    $firstInstallment = $transactionValue - ($value * ($installmentsCount - 1));
+                    $firstInstallment = (float) number_format($firstInstallment, 2, '.', '');
+
+                    for ($i = 1; $i <= $installmentsCount; $i++) {
+                        $installmentValue = ($i === 1) ? $firstInstallment : $value;
 
                         Installment::create([
                             'transaction_id' => $request->id,
-                            'installment_description' => $transaction->transaction_description . ' ' . $i . '/' . $request->installments,
-                            'installment_value' => $transaction->transaction_value / $request->installments,
+                            'installment_description' => $transaction->transaction_description . ' ' . $i . '/' . $installmentsCount,
+                            'installment_value' => $installmentValue,
                             'card_id' => $transaction->card_id,
-                            'pay_day' => $date
+                            'pay_day' => $payDays[$i - 1]
                         ]);
-
-                        $date = strtotime('+1 months', strtotime($date));
-                        $date = date('Y-m-d', $date);
                     }
                 }
 
@@ -423,16 +472,20 @@ class TransactionController extends Controller
 
                 if (!(is_null($request->date))) {
 
-                    $date = $request->date;
-                    Installment::where('transaction_id', $request->id)->get()->each(function ($installment) use (&$date) {
+                    $card = Card::where('user_id', Auth::id())->findOrFail($transaction->card_id);
+                    $firstPayDay = $this->resolveFirstInstallmentPayDay($request->date, $card);
+                    $payDays = $this->buildInstallmentDates($firstPayDay, (int) $transaction->installments);
 
-                        $installment->update([
-                            'pay_day' => $date,
-                        ]);
-
-                        $date = strtotime('+1 months', strtotime($date));
-                        $date = date('Y-m-d', $date);
-                    });
+                    $index = 0;
+                    Installment::where('transaction_id', $request->id)
+                        ->orderBy('id')
+                        ->get()
+                        ->each(function ($installment) use (&$index, $payDays) {
+                            $installment->update([
+                                'pay_day' => $payDays[$index]
+                            ]);
+                            $index++;
+                        });
                 }
             }
 
