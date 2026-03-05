@@ -38,6 +38,9 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('/cards', [CardController::class, 'showCards']);
     Route::get('/cards/{id}/invoice', [CardController::class, 'showCardInvoice']);
     Route::get('/cards/{id}/installments', [CardController::class, 'showInvoiceInstallments']); // Transações de um cartão no mês atual
+    Route::get('/cards/{id}/invoices', [CardController::class, 'showInvoices']); // histórico de faturas
+    Route::post('/cards/{id}/invoices/{pay_day}/pay', [CardController::class, 'payInvoiceByPayDay']);
+    Route::post('/cards/{id}/pay-invoice', [CardController::class, 'payNextInvoice']); // pagar próxima fatura (após fechamento)
     Route::get('/flags', [CardController::class, 'showFlags']);
 
     //Rotas dos gastos

@@ -15,11 +15,23 @@ class Installment extends Model
         'installment_description',
         'installment_value',
         'pay_day',
-        'card_id'
+        'card_id',
+        'paid_at',
+        'payment_transaction_id'
+    ];
+
+    protected $casts = [
+        'pay_day' => 'date:Y-m-d',    //só dia
+        'paid_at' => 'datetime',      //data + hora
     ];
 
     public function transaction(): BelongsTo
     {
         return $this->belongsTo(Transaction::class);
+    }
+
+    public function paymentTransaction(): BelongsTo
+    {
+        return $this->belongsTo(Transaction::class, 'payment_transaction_id');
     }
 }
