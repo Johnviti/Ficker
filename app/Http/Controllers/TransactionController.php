@@ -278,6 +278,11 @@ class TransactionController extends Controller
         }
     }
 
+    public function incomes(): JsonResponse
+    {
+        return $this->showTransactionsByType(1);
+    }
+
     public function showTransactionsByType($id): JsonResponse
     {
         try {

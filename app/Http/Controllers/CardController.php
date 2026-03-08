@@ -19,12 +19,11 @@ class CardController extends Controller
     {
         $today = Carbon::today()->toDateString();
 
-        // Próximo pay_day >= hoje
+        // Retorna a fatura em aberto mais antiga
         return Installment::where('card_id', $card->id)
             ->whereNull('paid_at')
-            ->whereDate('pay_day', '>=', $today)
             ->orderBy('pay_day', 'asc')
-            ->value('pay_day'); // retorna a primeira data
+            ->value('pay_day');
     }
 
     private function invoiceClosureDate(Card $card, string $invoicePayDay): \Carbon\Carbon
