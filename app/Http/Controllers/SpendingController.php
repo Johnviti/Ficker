@@ -184,8 +184,16 @@ class SpendingController extends Controller
                     ->get();
                 
 
-                for($i = 0; $i < count($spendingsByMonth); $i++) {
-                    $spendingsByMonth[$i]->planned_spending = $planned_spendings[$i]->planned_spending;
+                $plannedMap = [];
+
+                foreach ($planned_spendings as $planned) {
+                    $key = $planned->year . '-' . $planned->month;
+                    $plannedMap[$key] = $planned->planned_spending;
+                }
+
+                foreach ($spendingsByMonth as $item) {
+                    $key = $item->year . '-' . $item->month;
+                    $item->planned_spending = $plannedMap[$key] ?? null;
                 }
 
                 $response = [
