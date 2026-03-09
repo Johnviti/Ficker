@@ -12,6 +12,7 @@ use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use App\Models\Transaction;
 use App\Models\Category;
+use Illuminate\Validation\ValidationException;
 
 class CardController extends Controller
 {
@@ -407,6 +408,11 @@ class CardController extends Controller
         try {
             $card = Card::where('user_id', Auth::id())->findOrFail($id);
             return $this->payInvoiceCore($request, $card, $pay_day);
+        } catch (ValidationException $e) {
+            return response()->json([
+                'message' => $e->validator->errors()->first(),
+                'errors' => $e->errors()
+            ], 422);
         } catch (\Exception $e) {
             return response()->json([
                 'data' => [
@@ -434,6 +440,11 @@ class CardController extends Controller
 
             return $this->payInvoiceCore($request, $card, $nextPayDay);
 
+        } catch (ValidationException $e) {
+            return response()->json([
+                'message' => $e->validator->errors()->first(),
+                'errors' => $e->errors()
+            ], 422);
         } catch (\Exception $e) {
             return response()->json([
                 'data' => [
