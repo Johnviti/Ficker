@@ -156,7 +156,7 @@ class SpendingController extends Controller
                 $spendingByDay = Transaction::where('user_id', Auth::user()->id)
                 ->selectRaw('MONTH(date) as month, DAY(date) as day, 
                             SUM(CASE WHEN type_id = 1 THEN transaction_value ELSE 0 END) as incomes,
-                            SUM(CASE WHEN type_id != 1 THEN transaction_value ELSE 0 END) as spendings')
+                            SUM(CASE WHEN type_id = 2 AND payment_method_id != 4 THEN transaction_value ELSE 0 END) as spendings')
                 ->groupBy('day')
                 ->groupBy('month')
                 ->get();
@@ -172,7 +172,7 @@ class SpendingController extends Controller
                 $spendingsByMonth = Transaction::where('user_id', Auth::user()->id)
                     ->selectRaw('MONTH(date) as month, YEAR(date) as year,
                                 SUM(CASE WHEN type_id = 1 THEN transaction_value ELSE 0 END) as incomes,
-                                SUM(CASE WHEN type_id != 1 THEN transaction_value ELSE 0 END) as real_spending')
+                                SUM(CASE WHEN type_id = 2 AND payment_method_id != 4 THEN transaction_value ELSE 0 END) as real_spending')
                     ->groupBy('year')
                     ->groupBy('month')
                     ->get();
@@ -206,7 +206,7 @@ class SpendingController extends Controller
                 $spendingByYear = Transaction::where('user_id', Auth::user()->id)
                 ->selectRaw('YEAR(date) as year, 
                             SUM(CASE WHEN type_id = 1 THEN transaction_value ELSE 0 END) as incomes,
-                            SUM(CASE WHEN type_id != 1 THEN transaction_value ELSE 0 END) as spendings')
+                            SUM(CASE WHEN type_id = 2 AND payment_method_id != 4 THEN transaction_value ELSE 0 END) as spendings')
                 ->groupBy('year')
                 ->get();
 
