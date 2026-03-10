@@ -319,12 +319,14 @@ class CardController extends Controller
         $categoryId = $request->category_id;
 
         if (is_null($categoryId)) {
-            $category = Category::where('type_id', 2)
+            $category = Category::where('user_id', $userId)
+                ->where('type_id', 2)
                 ->where('category_description', 'Pagamento de fatura')
                 ->first();
 
             if (!$category) {
                 $category = Category::create([
+                    'user_id' => $userId,
                     'type_id' => 2,
                     'category_description' => 'Pagamento de fatura'
                 ]);
