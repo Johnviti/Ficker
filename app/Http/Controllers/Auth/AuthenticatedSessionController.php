@@ -29,7 +29,7 @@ class AuthenticatedSessionController extends Controller
             $token = $user->createToken('login_token')->plainTextToken;
 
             return response()->json([
-                "message" => "Login Success",
+                "message" => "Login realizado com sucesso",
                 "data" => [
                     "token" => $token,
                     "token_type" => "Bearer"
@@ -38,8 +38,8 @@ class AuthenticatedSessionController extends Controller
         }
 
         return response()->json([
-            "message" => "Error",
-        ], 404);
+            "message" => "E-mail ou senha incorretos",
+        ], 401);
     }
 
     /**
@@ -56,7 +56,7 @@ class AuthenticatedSessionController extends Controller
         Auth::guard('web')->logout();
 
         return response()->json([
-            "message" => "Logout Success"
+            "message" => "Logout realizado com sucesso"
         ], 200);
     }
 }
