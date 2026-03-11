@@ -516,7 +516,7 @@ class TransactionController extends Controller
                     "message" => "Erro ao atualizar a transação."
                 ]
             ];
-            return response()->json($response, 400);
+            return response()->json($response, 500);
         }
     }
 

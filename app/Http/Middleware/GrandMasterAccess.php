@@ -22,7 +22,7 @@ class GrandMasterAccess
             if(!Auth::check()){
                 return redirect('/login');
             }
-            abort(401);
+            abort(403);
         }
     }
 }

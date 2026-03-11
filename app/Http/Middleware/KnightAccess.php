@@ -22,7 +22,7 @@ class KnightAccess
             if(!Auth::check()){
                 return redirect('/login');
             }
-            abort(401, 'Unauthorized');
+            abort(403, 'Forbidden');
         }    
     }
 }
