@@ -18,7 +18,7 @@ class SpendingController extends Controller
                 'planned_spending' => ['required', 'numeric', 'min:1']
             ], [
                 'planned_spending.required' => 'Informe o gasto planejado.',
-                'planned_spending.numeric' => 'O gasto planejado deve ser numérico.',
+                'planned_spending.numeric' => 'O gasto planejado deve ser numerico.',
                 'planned_spending.min' => 'O gasto planejado deve ser maior que zero.',
             ]);
 
@@ -30,16 +30,10 @@ class SpendingController extends Controller
             return response()->json([
                 'spending' => $spending
             ], 201);
-
         } catch (ValidationException $e) {
             throw $e;
         } catch (\Exception $e) {
-            return response()->json([
-                'data' => [
-                    'message' => 'Erro na criação do gasto planejado.',
-                    'error' => $e->getMessage()
-                ]
-            ], 500);
+            return $this->errorResponse('Erro na criacao do gasto planejado.', 500);
         }
     }
 
@@ -64,18 +58,14 @@ class SpendingController extends Controller
                 'planned_spending' => ['required', 'numeric', 'min:1']
             ], [
                 'planned_spending.required' => 'Informe o gasto planejado.',
-                'planned_spending.numeric' => 'O gasto planejado deve ser numérico.',
+                'planned_spending.numeric' => 'O gasto planejado deve ser numerico.',
                 'planned_spending.min' => 'O gasto planejado deve ser maior que zero.',
             ]);
 
             $spending = Spending::find($request->id);
 
             if (!$spending) {
-                return response()->json([
-                    'data' => [
-                        'message' => 'Gasto planejado não encontrado.'
-                    ]
-                ], 404);
+                return $this->errorResponse('Gasto planejado nao encontrado.', 404);
             }
 
             $spending->update($request->only('planned_spending'));
@@ -88,12 +78,7 @@ class SpendingController extends Controller
         } catch (ValidationException $e) {
             throw $e;
         } catch (\Exception $e) {
-            return response()->json([
-                'data' => [
-                    'message' => 'Erro ao atualizar os gastos planejados.',
-                    'error' => $e->getMessage()
-                ]
-            ], 500);
+            return $this->errorResponse('Erro ao atualizar os gastos planejados.', 500);
         }
     }
 
@@ -107,11 +92,7 @@ class SpendingController extends Controller
             $spending = Spending::find($request->id);
 
             if (!$spending) {
-                return response()->json([
-                    'data' => [
-                        'message' => 'Gasto planejado não encontrado.'
-                    ]
-                ], 404);
+                return $this->errorResponse('Gasto planejado nao encontrado.', 404);
             }
 
             $spending->delete();
@@ -124,12 +105,7 @@ class SpendingController extends Controller
         } catch (ValidationException $e) {
             throw $e;
         } catch (\Exception $e) {
-            return response()->json([
-                'data' => [
-                    'message' => 'Erro ao deletar os gastos planejados.',
-                    'error' => $e->getMessage()
-                ]
-            ], 500);
+            return $this->errorResponse('Erro ao deletar os gastos planejados.', 500);
         }
     }
 
@@ -137,7 +113,6 @@ class SpendingController extends Controller
     {
         try {
             if ($request->query('sort') == 'day') {
-
                 $spendingByDay = Transaction::where('user_id', Auth::user()->id)
                     ->selectRaw('MONTH(date) as month, DAY(date) as day, 
                             SUM(CASE WHEN type_id = 1 THEN transaction_value ELSE 0 END) as incomes,
@@ -151,9 +126,7 @@ class SpendingController extends Controller
                         $spendingByDay,
                     ]
                 ];
-
             } elseif ($request->query('sort') == 'month') {
-
                 $spendingsByMonth = Transaction::where('user_id', Auth::user()->id)
                     ->selectRaw('MONTH(date) as month, YEAR(date) as year,
                                 SUM(CASE WHEN type_id = 1 THEN transaction_value ELSE 0 END) as incomes,
@@ -186,7 +159,6 @@ class SpendingController extends Controller
                     ]
                 ];
             } elseif ($request->query('sort') == 'year') {
-
                 $spendingByYear = Transaction::where('user_id', Auth::user()->id)
                     ->selectRaw('YEAR(date) as year, 
                             SUM(CASE WHEN type_id = 1 THEN transaction_value ELSE 0 END) as incomes,
@@ -197,25 +169,13 @@ class SpendingController extends Controller
                 $response = [
                     'data' => $spendingByYear
                 ];
-
             } else {
-                return response()->json([
-                    'data' => [
-                        'message' => 'Parâmetro sort inválido. Use day, month ou year.'
-                    ]
-                ], 422);
+                return $this->errorResponse('Parametro sort invalido. Use day, month ou year.', 422);
             }
 
             return response()->json($response, 200);
         } catch (\Exception $e) {
-            $errorMessage = 'Erro: Nenhuma entrada foi encontrada.';
-            $response = [
-                'data' => [
-                    'message' => $errorMessage,
-                    'error' => $e->getMessage()
-                ]
-            ];
-            return response()->json($response, 500);
+            return $this->errorResponse('Erro: Nenhuma entrada foi encontrada.', 500);
         }
     }
 }

@@ -22,7 +22,7 @@ class KnightAccess
             if(!Auth::check()){
                 return redirect('/login');
             }
-            abort(403, 'Forbidden');
+            return response()->json(['message' => 'Forbidden'], 403);
         }    
     }
 }

@@ -139,11 +139,7 @@ class CardController extends Controller
                 ]
             ], 200);
         } catch (ModelNotFoundException $e) {
-            return response()->json([
-                'data' => [
-                    'error' => $e->getMessage()
-                ]
-            ], 404);
+            return $this->errorResponse('Cartao nao encontrado.', 404);
         }
     }
 
@@ -169,11 +165,7 @@ class CardController extends Controller
                 ]
             ], 200);
         } catch (ModelNotFoundException $e) {
-            return response()->json([
-                'data' => [
-                    'error' => $e->getMessage()
-                ]
-            ], 404);
+            return $this->errorResponse('Cartao nao encontrado.', 404);
         }
     }
 
@@ -214,12 +206,7 @@ class CardController extends Controller
                 ]
             ], 200);
         } catch (ModelNotFoundException $e) {
-            return response()->json([
-                'data' => [
-                    'message' => 'Cartao nao encontrado ou sem faturas.',
-                    'error' => $e->getMessage()
-                ]
-            ], 404);
+            return $this->errorResponse('Cartao nao encontrado ou sem faturas.', 404);
         }
     }
 
@@ -244,25 +231,19 @@ class CardController extends Controller
         $openTotal = (float) $installmentsQuery->sum('installment_value');
 
         if ($openTotal <= 0) {
-            return response()->json([
-                'data' => [
-                    'message' => 'Esta fatura nao possui parcelas em aberto (ja paga ou inexistente).',
-                    'invoice_pay_day' => $invoicePayDay,
-                ]
-            ], 422);
+            return $this->errorResponse('Esta fatura nao possui parcelas em aberto (ja paga ou inexistente).', 422, [
+                'invoice_pay_day' => [$invoicePayDay],
+            ]);
         }
 
         $closureDate = $this->invoiceClosureDate($card, $invoicePayDay);
         $today = Carbon::today()->startOfDay();
 
         if ($today->lt($closureDate)) {
-            return response()->json([
-                'data' => [
-                    'message' => 'A fatura ainda nao fechou. Voce so pode pagar apos o fechamento.',
-                    'invoice_pay_day' => $invoicePayDay,
-                    'invoice_closure_date' => $closureDate->toDateString(),
-                ]
-            ], 422);
+            return $this->errorResponse('A fatura ainda nao fechou. Voce so pode pagar apos o fechamento.', 422, [
+                'invoice_pay_day' => [$invoicePayDay],
+                'invoice_closure_date' => [$closureDate->toDateString()],
+            ]);
         }
 
         $paymentDate = $request->date ?? Carbon::today()->toDateString();
@@ -295,21 +276,15 @@ class CardController extends Controller
             $category = Category::find($categoryId);
 
             if (!$category) {
-                return response()->json([
-                    'message' => 'Categoria nao encontrada.',
-                    'errors' => [
-                        'category_id' => ['Categoria nao encontrada.']
-                    ]
-                ], 404);
+                return $this->errorResponse('Categoria nao encontrada.', 404, [
+                    'category_id' => ['Categoria nao encontrada.']
+                ]);
             }
 
             if ((int) $category->type_id !== 2) {
-                return response()->json([
-                    'message' => 'A categoria selecionada nao corresponde ao tipo da transacao.',
-                    'errors' => [
-                        'category_id' => ['A categoria selecionada nao corresponde ao tipo da transacao.']
-                    ]
-                ], 422);
+                return $this->errorResponse('A categoria selecionada nao corresponde ao tipo da transacao.', 422, [
+                    'category_id' => ['A categoria selecionada nao corresponde ao tipo da transacao.']
+                ]);
             }
         }
 
@@ -360,23 +335,11 @@ class CardController extends Controller
             $card = Card::where('user_id', Auth::id())->findOrFail($id);
             return $this->payInvoiceCore($request, $card, $payDay);
         } catch (ModelNotFoundException $e) {
-            return response()->json([
-                'data' => [
-                    'message' => 'Cartao nao encontrado.'
-                ]
-            ], 404);
+            return $this->errorResponse('Cartao nao encontrado.', 404);
         } catch (ValidationException $e) {
-            return response()->json([
-                'message' => $e->validator->errors()->first(),
-                'errors' => $e->errors()
-            ], 422);
+            return $this->errorResponse($e->validator->errors()->first(), 422, $e->errors());
         } catch (\Exception $e) {
-            return response()->json([
-                'data' => [
-                    'message' => 'Erro ao pagar fatura.',
-                    'error' => $e->getMessage()
-                ]
-            ], 500);
+            return $this->errorResponse('Erro ao pagar fatura.', 500);
         }
     }
 
@@ -387,32 +350,16 @@ class CardController extends Controller
             $nextPayDay = $this->nextInvoicePayDay($card);
 
             if (!$nextPayDay) {
-                return response()->json([
-                    'data' => [
-                        'message' => 'Nao ha fatura em aberto para este cartao.'
-                    ]
-                ], 422);
+                return $this->errorResponse('Nao ha fatura em aberto para este cartao.', 422);
             }
 
             return $this->payInvoiceCore($request, $card, $nextPayDay);
         } catch (ModelNotFoundException $e) {
-            return response()->json([
-                'data' => [
-                    'message' => 'Cartao nao encontrado.'
-                ]
-            ], 404);
+            return $this->errorResponse('Cartao nao encontrado.', 404);
         } catch (ValidationException $e) {
-            return response()->json([
-                'message' => $e->validator->errors()->first(),
-                'errors' => $e->errors()
-            ], 422);
+            return $this->errorResponse($e->validator->errors()->first(), 422, $e->errors());
         } catch (\Exception $e) {
-            return response()->json([
-                'data' => [
-                    'message' => 'Erro ao pagar fatura.',
-                    'error' => $e->getMessage()
-                ]
-            ], 500);
+            return $this->errorResponse('Erro ao pagar fatura.', 500);
         }
     }
 }

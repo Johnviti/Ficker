@@ -94,12 +94,9 @@ class TransactionController extends Controller
             $card = Card::where('user_id', Auth::id())->find($request->card_id);
 
             if (!$card) {
-                return response()->json([
-                    'message' => 'Cartao nao encontrado.',
-                    'errors' => [
-                        'card_id' => ['Cartao nao encontrado.']
-                    ]
-                ], 404);
+                return $this->errorResponse('Cartao nao encontrado.', 404, [
+                    'card_id' => ['Cartao nao encontrado.']
+                ]);
             }
         }
 
@@ -113,21 +110,15 @@ class TransactionController extends Controller
         }
 
         if (!$category) {
-            return response()->json([
-                'message' => 'Categoria nao encontrada.',
-                'errors' => [
-                    'category_id' => ['Categoria nao encontrada.']
-                ]
-            ], 404);
+            return $this->errorResponse('Categoria nao encontrada.', 404, [
+                'category_id' => ['Categoria nao encontrada.']
+            ]);
         }
 
         if ((int) $category->type_id !== (int) $request->type_id) {
-            return response()->json([
-                'message' => 'A categoria selecionada nao corresponde ao tipo da transacao.',
-                'errors' => [
-                    'category_id' => ['A categoria selecionada nao corresponde ao tipo da transacao.']
-                ]
-            ], 422);
+            return $this->errorResponse('A categoria selecionada nao corresponde ao tipo da transacao.', 422, [
+                'category_id' => ['A categoria selecionada nao corresponde ao tipo da transacao.']
+            ]);
         }
 
         if (is_null($request->installments)) {
@@ -229,11 +220,7 @@ class TransactionController extends Controller
                 ]
             ], 200);
         } catch (ModelNotFoundException $e) {
-            return response()->json([
-                'data' => [
-                    'message' => 'Erro: Transacao nao encontrada.'
-                ]
-            ], 404);
+            return $this->errorResponse('Erro: Transacao nao encontrada.', 404);
         }
     }
 
@@ -281,11 +268,7 @@ class TransactionController extends Controller
         try {
             $transaction = Transaction::where('user_id', Auth::id())->findOrFail($id);
         } catch (ModelNotFoundException $e) {
-            return response()->json([
-                'data' => [
-                    'message' => 'Essa transacao nao existe ou ja foi excluida.'
-                ]
-            ], 404);
+            return $this->errorResponse('Essa transacao nao existe ou ja foi excluida.', 404);
         }
 
         try {
@@ -318,21 +301,15 @@ class TransactionController extends Controller
                 }
 
                 if (!$category) {
-                    return response()->json([
-                        'message' => 'Categoria nao encontrada.',
-                        'errors' => [
-                            'category_id' => ['Categoria nao encontrada.']
-                        ]
-                    ], 404);
+                    return $this->errorResponse('Categoria nao encontrada.', 404, [
+                        'category_id' => ['Categoria nao encontrada.']
+                    ]);
                 }
 
                 if ((int) $category->type_id !== (int) $transaction->type_id) {
-                    return response()->json([
-                        'message' => 'A categoria selecionada nao corresponde ao tipo da transacao.',
-                        'errors' => [
-                            'category_id' => ['A categoria selecionada nao corresponde ao tipo da transacao.']
-                        ]
-                    ], 422);
+                    return $this->errorResponse('A categoria selecionada nao corresponde ao tipo da transacao.', 422, [
+                        'category_id' => ['A categoria selecionada nao corresponde ao tipo da transacao.']
+                    ]);
                 }
 
                 $categoryIdToUpdate = $category->id;
@@ -438,16 +415,9 @@ class TransactionController extends Controller
             ], 200);
 
         } catch (ValidationException $e) {
-            return response()->json([
-                'message' => 'Os dados informados sao invalidos.',
-                'errors' => $e->errors()
-            ], 422);
+            return $this->errorResponse('Os dados informados sao invalidos.', 422, $e->errors());
         } catch (\Exception $e) {
-            return response()->json([
-                'data' => [
-                    'message' => 'Erro ao atualizar a transacao.'
-                ]
-            ], 500);
+            return $this->errorResponse('Erro ao atualizar a transacao.', 500);
         }
     }
 
@@ -466,11 +436,7 @@ class TransactionController extends Controller
                 ]
             ], 200);
         } catch (ModelNotFoundException $e) {
-            return response()->json([
-                'data' => [
-                    'message' => 'Erro: Esta transacao nao existe.'
-                ]
-            ], 404);
+            return $this->errorResponse('Erro: Esta transacao nao existe.', 404);
         }
     }
 }

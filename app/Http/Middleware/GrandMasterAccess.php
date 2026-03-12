@@ -22,7 +22,7 @@ class GrandMasterAccess
             if(!Auth::check()){
                 return redirect('/login');
             }
-            abort(403);
+            return response()->json(['message' => 'Forbidden'], 403);
         }
     }
 }

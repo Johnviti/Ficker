@@ -16,12 +16,12 @@ class CategoryController extends Controller
             'category_description' => ['required', 'string', 'min:2', 'max:50'],
             'type_id' => ['required', 'integer', 'in:1,2,3'],
         ], [
-            'category_description.required' => 'Informe a descrição da categoria.',
-            'category_description.string' => 'A descrição da categoria deve ser um texto.',
-            'category_description.min' => 'A descrição da categoria deve ter pelo menos 2 caracteres.',
-            'category_description.max' => 'A descrição da categoria deve ter no máximo 50 caracteres.',
+            'category_description.required' => 'Informe a descricao da categoria.',
+            'category_description.string' => 'A descricao da categoria deve ser um texto.',
+            'category_description.min' => 'A descricao da categoria deve ter pelo menos 2 caracteres.',
+            'category_description.max' => 'A descricao da categoria deve ter no maximo 50 caracteres.',
             'type_id.required' => 'Informe o tipo da categoria.',
-            'type_id.integer' => 'O tipo da categoria deve ser numérico.',
+            'type_id.integer' => 'O tipo da categoria deve ser numerico.',
             'type_id.in' => 'O tipo da categoria deve ser 1, 2 ou 3.',
         ]);
 
@@ -39,25 +39,19 @@ class CategoryController extends Controller
                     'category' => $category
                 ]
             ], 201);
-
         } catch (\Exception $e) {
-            return response()->json([
-                'data' => [
-                    'message' => 'A categoria não foi criada.',
-                    'error' => $e->getMessage()
-                ]
-            ], 500);
+            return $this->errorResponse('A categoria nao foi criada.', 500);
         }
     }
 
     public static function storeInTransaction($description, $type)
     {
         if (!is_string($description) || trim($description) === '') {
-            throw new \InvalidArgumentException('Descrição da categoria inválida.');
+            throw new \InvalidArgumentException('Descricao da categoria invalida.');
         }
 
         if (!in_array((int) $type, [1, 2, 3], true)) {
-            throw new \InvalidArgumentException('Tipo de categoria inválido.');
+            throw new \InvalidArgumentException('Tipo de categoria invalido.');
         }
 
         return Category::create([
@@ -91,11 +85,7 @@ class CategoryController extends Controller
     public function showCategoriesByType($id): JsonResponse
     {
         if (!in_array((int) $id, [1, 2, 3], true)) {
-            return response()->json([
-                'data' => [
-                    'message' => 'Tipo de categoria inválido.'
-                ]
-            ], 422);
+            return $this->errorResponse('Tipo de categoria invalido.', 422);
         }
 
         $categories = Category::where([
@@ -111,11 +101,7 @@ class CategoryController extends Controller
         $category = Category::where('user_id', Auth::id())->find($id);
 
         if (!$category) {
-            return response()->json([
-                'data' => [
-                    'message' => 'Categoria não encontrada.'
-                ]
-            ], 404);
+            return $this->errorResponse('Categoria nao encontrada.', 404);
         }
 
         return response()->json([
