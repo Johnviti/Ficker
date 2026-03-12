@@ -2,56 +2,48 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
-use Illuminate\Http\JsonResponse;
 use App\Models\Card;
+use App\Models\Category;
 use App\Models\Flag;
 use App\Models\Installment;
-use Illuminate\Support\Facades\Auth;
-use Carbon\Carbon;
-use Illuminate\Support\Facades\DB;
 use App\Models\Transaction;
-use App\Models\Category;
+use Carbon\Carbon;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class CardController extends Controller
 {
     private function nextInvoicePayDay(Card $card): ?string
     {
-        $today = Carbon::today()->toDateString();
-
-        // Retorna a fatura em aberto mais antiga
         return Installment::where('card_id', $card->id)
             ->whereNull('paid_at')
             ->orderBy('pay_day', 'asc')
             ->value('pay_day');
     }
 
-    private function invoiceClosureDate(Card $card, string $invoicePayDay): \Carbon\Carbon
+    private function invoiceClosureDate(Card $card, string $invoicePayDay): Carbon
     {
-        $payDay = \Carbon\Carbon::parse($invoicePayDay)->startOfDay();
+        $payDay = Carbon::parse($invoicePayDay)->startOfDay();
 
         $closureDay = (int) $card->closure;
         $expirationDay = (int) $card->expiration;
 
-        // Se vencimento > fechamento: fechamento acontece no MESMO mês do vencimento.
-        // Ex: fechamento 10, vencimento 20, fatura vence 20/03 e fecha 10/03.
-        if ($expirationDay > $closureDay) {
-            $closureMonth = $payDay->copy(); // mesmo mês do payDay
-        } else {
-            // Se vencimento < fechamento: fechamento acontece no mês ANTERIOR ao vencimento.
-            // Ex: fechamento 15, vencimento 03, fatura vence 03/04 e fecha 15/03.
-            $closureMonth = $payDay->copy()->subMonth();
-        }
+        $closureMonth = $expirationDay > $closureDay
+            ? $payDay->copy()
+            : $payDay->copy()->subMonth();
 
-        $closureDate = \Carbon\Carbon::create(
+        return Carbon::create(
             $closureMonth->year,
             $closureMonth->month,
             min($closureDay, $closureMonth->daysInMonth),
-            0, 0, 0
+            0,
+            0,
+            0
         );
-
-        return $closureDate;
     }
 
     public function store(Request $request): JsonResponse
@@ -61,10 +53,9 @@ class CardController extends Controller
             'flag_id' => ['required', 'exists:flags,id'],
             'expiration' => ['required', 'integer', 'min:1', 'max:31', 'different:closure'],
             'closure' => ['required', 'integer', 'min:1', 'max:31'],
-        ], [ 
-             'expiration.different' => 'O vencimento não pode ser no mesmo dia do fechamento.',
+        ], [
+            'expiration.different' => 'O vencimento nao pode ser no mesmo dia do fechamento.',
         ]);
-
 
         $card = Card::create([
             'user_id' => Auth::user()->id,
@@ -76,76 +67,54 @@ class CardController extends Controller
 
         LevelController::completeMission(3);
 
-        $response = [
+        return response()->json([
             'card' => $card
-        ];
-
-        return response()->json($response, 201);
+        ], 201);
     }
 
     public function showCards(): JsonResponse
     {
-        try {
-            $cards = Auth::user()->cards;
-            $response = ['data' => ['cards' => []]];
-            foreach ($cards as $card) {
-                $invoice = Self::invoice($card->id);
-                $card->invoice = $invoice;
-                array_push($response['data']['cards'], $card);
-            }
-            return response()->json($response, 200);
-            
-        } catch (\Exception $e) {
-            $errorMessage = "Nenhum cartão cadastrado";
-            $response = [
-                "data" => [
-                    "error" => $errorMessage
-                ]
-            ];
-            return response()->json($response, 404);
+        $cards = Auth::user()->cards;
+        $response = ['data' => ['cards' => []]];
+
+        foreach ($cards as $card) {
+            $card->invoice = $this->invoice($card->id);
+            $response['data']['cards'][] = $card;
         }
+
+        return response()->json($response, 200);
     }
 
     public function showFlags(): JsonResponse
     {
-        try {
-            $flags = Flag::all();
-            $response = ['data' => ['flags' => []]];
-            foreach ($flags as $flag) {
-                array_push($response['data']['flags'], $flag);
-            }
-            return response()->json($response, 200);
-        } catch (\Exception $e) {
-            $errorMessage = "Nenhuma bandeira foi encontrada";
-            $response = [
-                "data" => [
-                    "error" => $errorMessage
-                ]
-            ];
+        $flags = Flag::all();
+        $response = ['data' => ['flags' => []]];
 
-            return response()->json($response, 404);
+        foreach ($flags as $flag) {
+            $response['data']['flags'][] = $flag;
         }
+
+        return response()->json($response, 200);
     }
 
     public function invoice($id)
     {
-        try {
-            $card = Card::where('user_id', Auth::id())->findOrFail($id);
+        $card = Card::where('user_id', Auth::id())->find($id);
 
-            $nextPayDay = $this->nextInvoicePayDay($card);
-
-            if (!$nextPayDay) {
-                return 0;
-            }
-
-            return (float) Installment::where('card_id', $card->id)
-                ->whereNull('paid_at')
-                ->whereDate('pay_day', $nextPayDay)
-                ->sum('installment_value');
-
-        } catch (\Exception $e) {
+        if (!$card) {
             return 0;
         }
+
+        $nextPayDay = $this->nextInvoicePayDay($card);
+
+        if (!$nextPayDay) {
+            return 0;
+        }
+
+        return (float) Installment::where('card_id', $card->id)
+            ->whereNull('paid_at')
+            ->whereDate('pay_day', $nextPayDay)
+            ->sum('installment_value');
     }
 
     public function showCardInvoice($id): JsonResponse
@@ -154,7 +123,6 @@ class CardController extends Controller
             $card = Card::where('user_id', Auth::id())->findOrFail($id);
 
             $nextPayDay = $this->nextInvoicePayDay($card);
-
             $invoice = 0;
 
             if ($nextPayDay) {
@@ -165,16 +133,15 @@ class CardController extends Controller
             }
 
             return response()->json([
-                "data" => [
-                    "invoice" => $invoice,
-                    "pay_day" => $nextPayDay
+                'data' => [
+                    'invoice' => $invoice,
+                    'pay_day' => $nextPayDay
                 ]
             ], 200);
-
-        } catch (\Exception $e) {
+        } catch (ModelNotFoundException $e) {
             return response()->json([
-                "data" => [
-                    "error" => $e->getMessage()
+                'data' => [
+                    'error' => $e->getMessage()
                 ]
             ], 404);
         }
@@ -186,7 +153,6 @@ class CardController extends Controller
             $card = Card::where('user_id', Auth::id())->findOrFail($id);
 
             $nextPayDay = $this->nextInvoicePayDay($card);
-
             $installments = [];
 
             if ($nextPayDay) {
@@ -197,21 +163,19 @@ class CardController extends Controller
             }
 
             return response()->json([
-                "data" => [
-                    "pay_day" => $nextPayDay,
-                    "installments" => $installments
+                'data' => [
+                    'pay_day' => $nextPayDay,
+                    'installments' => $installments
                 ]
             ], 200);
-
-        } catch (\Exception $e) {
+        } catch (ModelNotFoundException $e) {
             return response()->json([
-                "data" => [
-                    "error" => $e->getMessage()
+                'data' => [
+                    'error' => $e->getMessage()
                 ]
             ], 404);
         }
     }
-
 
     public function showInvoices($id): JsonResponse
     {
@@ -222,34 +186,24 @@ class CardController extends Controller
                 ->orderBy('pay_day', 'asc')
                 ->get();
 
-            // agrupa por pay_day (normaliza para string)
-            $grouped = $installments->groupBy(function ($inst) {
-                // garante formato consistente
-                return \Carbon\Carbon::parse($inst->pay_day)->toDateString();
+            $grouped = $installments->groupBy(function ($installment) {
+                return Carbon::parse($installment->pay_day)->toDateString();
             });
 
             $invoices = [];
 
             foreach ($grouped as $payDay => $items) {
-                $total = (float) $items->sum('installment_value');
                 $openTotal = (float) $items->whereNull('paid_at')->sum('installment_value');
-
-                $isPaid = $openTotal <= 0;
-
-                // data do pagamento (se paga): pega o maior paid_at dentro do grupo
                 $lastPaidAt = $items->max('paid_at');
-                $lastPaidAt = $lastPaidAt ? \Carbon\Carbon::parse($lastPaidAt)->toDateTimeString() : null;
-
-                $closureDate = $this->invoiceClosureDate($card, $payDay)->toDateString();
 
                 $invoices[] = [
                     'pay_day' => $payDay,
-                    'closure_date' => $closureDate,
-                    'total' => $total,
+                    'closure_date' => $this->invoiceClosureDate($card, $payDay)->toDateString(),
+                    'total' => (float) $items->sum('installment_value'),
                     'open_total' => $openTotal,
-                    'is_paid' => $isPaid,
+                    'is_paid' => $openTotal <= 0,
                     'installments_count' => $items->count(),
-                    'paid_at' => $lastPaidAt,
+                    'paid_at' => $lastPaidAt ? Carbon::parse($lastPaidAt)->toDateTimeString() : null,
                 ];
             }
 
@@ -259,11 +213,10 @@ class CardController extends Controller
                     'invoices' => $invoices
                 ]
             ], 200);
-
-        } catch (\Exception $e) {
+        } catch (ModelNotFoundException $e) {
             return response()->json([
                 'data' => [
-                    'message' => 'Cartão não encontrado ou sem faturas.',
+                    'message' => 'Cartao nao encontrado ou sem faturas.',
                     'error' => $e->getMessage()
                 ]
             ], 404);
@@ -278,13 +231,12 @@ class CardController extends Controller
             'category_description' => ['required_if:category_id,0', 'string', 'max:50'],
             'date' => ['nullable', 'date', 'before_or_equal:today'],
         ], [
-            'payment_method_id.not_in' => 'Pagamento de fatura não pode ser feito com método cartão de crédito.',
+            'payment_method_id.not_in' => 'Pagamento de fatura nao pode ser feito com metodo cartao de credito.',
         ]);
 
-        $invoicePayDay = \Carbon\Carbon::parse($invoicePayDay)->toDateString();
+        $invoicePayDay = Carbon::parse($invoicePayDay)->toDateString();
         $userId = Auth::id();
 
-        // 1) parcelas em aberto
         $installmentsQuery = Installment::where('card_id', $card->id)
             ->whereNull('paid_at')
             ->whereDate('pay_day', $invoicePayDay);
@@ -294,28 +246,26 @@ class CardController extends Controller
         if ($openTotal <= 0) {
             return response()->json([
                 'data' => [
-                    'message' => 'Esta fatura não possui parcelas em aberto (já paga ou inexistente).',
+                    'message' => 'Esta fatura nao possui parcelas em aberto (ja paga ou inexistente).',
                     'invoice_pay_day' => $invoicePayDay,
                 ]
             ], 422);
         }
 
-        // 2) bloqueio após fechamento (Modelo A)
         $closureDate = $this->invoiceClosureDate($card, $invoicePayDay);
-        $today = \Carbon\Carbon::today()->startOfDay();
+        $today = Carbon::today()->startOfDay();
 
         if ($today->lt($closureDate)) {
             return response()->json([
                 'data' => [
-                    'message' => 'A fatura ainda não fechou. Você só pode pagar após o fechamento.',
+                    'message' => 'A fatura ainda nao fechou. Voce so pode pagar apos o fechamento.',
                     'invoice_pay_day' => $invoicePayDay,
                     'invoice_closure_date' => $closureDate->toDateString(),
                 ]
             ], 422);
         }
 
-        // 3) categoria (mesma lógica atual)
-        $paymentDate = $request->date ?? \Carbon\Carbon::today()->toDateString();
+        $paymentDate = $request->date ?? Carbon::today()->toDateString();
         $categoryId = $request->category_id;
 
         if (is_null($categoryId)) {
@@ -346,24 +296,23 @@ class CardController extends Controller
 
             if (!$category) {
                 return response()->json([
-                    'message' => 'Categoria não encontrada.',
+                    'message' => 'Categoria nao encontrada.',
                     'errors' => [
-                        'category_id' => ['Categoria não encontrada.']
+                        'category_id' => ['Categoria nao encontrada.']
                     ]
                 ], 404);
             }
 
             if ((int) $category->type_id !== 2) {
                 return response()->json([
-                    'message' => 'A categoria selecionada não corresponde ao tipo da transação.',
+                    'message' => 'A categoria selecionada nao corresponde ao tipo da transacao.',
                     'errors' => [
-                        'category_id' => ['A categoria selecionada não corresponde ao tipo da transação.']
+                        'category_id' => ['A categoria selecionada nao corresponde ao tipo da transacao.']
                     ]
                 ], 422);
             }
         }
 
-        // 4) cria transação + baixa parcelas
         $paymentTransaction = DB::transaction(function () use (
             $userId,
             $card,
@@ -405,11 +354,17 @@ class CardController extends Controller
         ], 200);
     }
 
-    public function payInvoiceByPayDay(Request $request, $id, $pay_day): JsonResponse
+    public function payInvoiceByPayDay(Request $request, $id, $payDay): JsonResponse
     {
         try {
             $card = Card::where('user_id', Auth::id())->findOrFail($id);
-            return $this->payInvoiceCore($request, $card, $pay_day);
+            return $this->payInvoiceCore($request, $card, $payDay);
+        } catch (ModelNotFoundException $e) {
+            return response()->json([
+                'data' => [
+                    'message' => 'Cartao nao encontrado.'
+                ]
+            ], 404);
         } catch (ValidationException $e) {
             return response()->json([
                 'message' => $e->validator->errors()->first(),
@@ -429,19 +384,23 @@ class CardController extends Controller
     {
         try {
             $card = Card::where('user_id', Auth::id())->findOrFail($id);
-
             $nextPayDay = $this->nextInvoicePayDay($card);
 
             if (!$nextPayDay) {
                 return response()->json([
                     'data' => [
-                        'message' => 'Não há fatura em aberto para este cartão.'
+                        'message' => 'Nao ha fatura em aberto para este cartao.'
                     ]
                 ], 422);
             }
 
             return $this->payInvoiceCore($request, $card, $nextPayDay);
-
+        } catch (ModelNotFoundException $e) {
+            return response()->json([
+                'data' => [
+                    'message' => 'Cartao nao encontrado.'
+                ]
+            ], 404);
         } catch (ValidationException $e) {
             return response()->json([
                 'message' => $e->validator->errors()->first(),
@@ -456,5 +415,4 @@ class CardController extends Controller
             ], 500);
         }
     }
-
 }

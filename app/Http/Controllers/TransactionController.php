@@ -2,20 +2,20 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
-use Illuminate\Http\JsonResponse;
-use Illuminate\Support\Facades\Auth;
-use App\Models\Transaction;
-use App\Models\Category;
 use App\Models\Card;
+use App\Models\Category;
 use App\Models\Installment;
-use Illuminate\Support\Facades\DB;
+use App\Models\Transaction;
 use Carbon\Carbon;
+use Illuminate\Database\Eloquent\ModelNotFoundException;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class TransactionController extends Controller
 {
-
     private function resolveFirstInstallmentPayDay(string $transactionDate, Card $card): string
     {
         $purchaseDate = Carbon::parse($transactionDate)->startOfDay();
@@ -27,30 +27,28 @@ class TransactionController extends Controller
             $purchaseDate->year,
             $purchaseDate->month,
             min($closureDay, $purchaseDate->daysInMonth),
-            0, 0, 0
+            0,
+            0,
+            0
         );
 
-        // Caso 1: vencimento depois do fechamento no mesmo mês
         if ($expirationDay > $closureDay) {
-            if ($purchaseDate->lte($closureThisMonth)) {
-                $baseMonth = $purchaseDate->copy();
-            } else {
-                $baseMonth = $purchaseDate->copy()->addMonth();
-            }
+            $baseMonth = $purchaseDate->lte($closureThisMonth)
+                ? $purchaseDate->copy()
+                : $purchaseDate->copy()->addMonth();
         } else {
-            // Caso 2: vencimento ocorre no mês seguinte ao fechamento
-            if ($purchaseDate->lte($closureThisMonth)) {
-                $baseMonth = $purchaseDate->copy()->addMonth();
-            } else {
-                $baseMonth = $purchaseDate->copy()->addMonths(2);
-            }
+            $baseMonth = $purchaseDate->lte($closureThisMonth)
+                ? $purchaseDate->copy()->addMonth()
+                : $purchaseDate->copy()->addMonths(2);
         }
 
         $dueDate = Carbon::create(
             $baseMonth->year,
             $baseMonth->month,
             min($expirationDay, $baseMonth->daysInMonth),
-            0, 0, 0
+            0,
+            0,
+            0
         );
 
         return $dueDate->toDateString();
@@ -81,16 +79,14 @@ class TransactionController extends Controller
             'installments' => ['required_if:payment_method_id,4', 'prohibited_unless:payment_method_id,4', 'integer', 'min:1'],
             'card_id' => ['required_if:payment_method_id,4', 'prohibited_unless:payment_method_id,4', 'integer']
         ], [
-            'date.before_or_equal' => 'O campo data deve ser uma data anterior ou igual à data atual.',
-            'installments.required_if' => 'O campo parcelas é obrigatório para compras no cartão de crédito.',
-            'installments.integer' => 'O campo parcelas deve ser um número inteiro.',
-            'installments.min' => 'O número de parcelas deve ser no mínimo 1.',
-            'card_id.required_if' => 'O cartão é obrigatório para compras no cartão de crédito.',
-            'transaction_value.numeric' => 'Informe um valor numérico válido para a transação.',
-            'transaction_value.min' => 'Informe um valor de transação maior que zero.'
+            'date.before_or_equal' => 'O campo data deve ser uma data anterior ou igual a data atual.',
+            'installments.required_if' => 'O campo parcelas e obrigatorio para compras no cartao de credito.',
+            'installments.integer' => 'O campo parcelas deve ser um numero inteiro.',
+            'installments.min' => 'O numero de parcelas deve ser no minimo 1.',
+            'card_id.required_if' => 'O cartao e obrigatorio para compras no cartao de credito.',
+            'transaction_value.numeric' => 'Informe um valor numerico valido para a transacao.',
+            'transaction_value.min' => 'Informe um valor de transacao maior que zero.'
         ]);
-
-        // Validando card id
 
         $card = null;
 
@@ -99,15 +95,13 @@ class TransactionController extends Controller
 
             if (!$card) {
                 return response()->json([
-                    'message' => 'Cartão não encontrado.',
+                    'message' => 'Cartao nao encontrado.',
                     'errors' => [
-                        'card_id' => ['Cartão não encontrado.']
+                        'card_id' => ['Cartao nao encontrado.']
                     ]
                 ], 404);
             }
         }
-
-        // Cadastrando nova categoria
 
         if ((int) $request->category_id === 0) {
             $category = CategoryController::storeInTransaction(
@@ -120,26 +114,23 @@ class TransactionController extends Controller
 
         if (!$category) {
             return response()->json([
-                'message' => 'Categoria não encontrada.',
+                'message' => 'Categoria nao encontrada.',
                 'errors' => [
-                    'category_id' => ['Categoria não encontrada.']
+                    'category_id' => ['Categoria nao encontrada.']
                 ]
             ], 404);
         }
 
         if ((int) $category->type_id !== (int) $request->type_id) {
             return response()->json([
-                'message' => 'A categoria selecionada não corresponde ao tipo da transação.',
+                'message' => 'A categoria selecionada nao corresponde ao tipo da transacao.',
                 'errors' => [
-                    'category_id' => ['A categoria selecionada não corresponde ao tipo da transação.']
+                    'category_id' => ['A categoria selecionada nao corresponde ao tipo da transacao.']
                 ]
             ], 422);
         }
 
-        // Cadastrando transação
-
-        if (is_null($request->installments)) { // Entrada e saída sem parcelas
-
+        if (is_null($request->installments)) {
             $transaction = Transaction::create([
                 'user_id' => Auth::id(),
                 'category_id' => $category->id,
@@ -158,115 +149,91 @@ class TransactionController extends Controller
                     'installments' => []
                 ]
             ], 201);
-
-        } else { // Saídas de cartão de crédito
-
-            $transaction = Transaction::create([
-                'user_id' => Auth::id(),
-                'category_id' => $category->id,
-                'type_id' => $request->type_id,
-                'payment_method_id' => $request->payment_method_id,
-                'card_id' => $request->card_id,
-                'transaction_description' => $request->transaction_description,
-                'date' => $request->date,
-                'transaction_value' => $request->transaction_value,
-                'installments' => $request->installments,
-            ]);
-
-            $installments = (int) $request->installments;
-            $transactionValue = (float) $request->transaction_value;
-
-            $firstPayDay = $this->resolveFirstInstallmentPayDay($request->date, $card);
-            $payDays = $this->buildInstallmentDates($firstPayDay, $installments);
-
-            $value = (float) number_format($transactionValue / $installments, 2, '.', '');
-            $firstInstallment = $transactionValue - ($value * ($installments - 1));
-            $firstInstallment = (float) number_format($firstInstallment, 2, '.', '');
-
-            $response = [];
-
-            for ($i = 1; $i <= $installments; $i++) {
-                $installmentValue = ($i === 1) ? $firstInstallment : $value;
-
-                $installment = Installment::create([
-                    'transaction_id' => $transaction->id,
-                    'installment_description' => $request->transaction_description . ' ' . $i . '/' . $installments,
-                    'installment_value' => $installmentValue,
-                    'card_id' => $request->card_id,
-                    'pay_day' => $payDays[$i - 1]
-                ]);
-
-                $response[] = $installment;
-            }
-
-            LevelController::completeMission(4);
-
-            return response()->json([
-                'data' => [
-                    'transaction' => $transaction,
-                    'installments' => $response
-                ]
-            ], 201);
         }
+
+        $transaction = Transaction::create([
+            'user_id' => Auth::id(),
+            'category_id' => $category->id,
+            'type_id' => $request->type_id,
+            'payment_method_id' => $request->payment_method_id,
+            'card_id' => $request->card_id,
+            'transaction_description' => $request->transaction_description,
+            'date' => $request->date,
+            'transaction_value' => $request->transaction_value,
+            'installments' => $request->installments,
+        ]);
+
+        $installments = (int) $request->installments;
+        $transactionValue = (float) $request->transaction_value;
+        $firstPayDay = $this->resolveFirstInstallmentPayDay($request->date, $card);
+        $payDays = $this->buildInstallmentDates($firstPayDay, $installments);
+
+        $value = (float) number_format($transactionValue / $installments, 2, '.', '');
+        $firstInstallment = $transactionValue - ($value * ($installments - 1));
+        $firstInstallment = (float) number_format($firstInstallment, 2, '.', '');
+
+        $response = [];
+
+        for ($i = 1; $i <= $installments; $i++) {
+            $installmentValue = ($i === 1) ? $firstInstallment : $value;
+
+            $response[] = Installment::create([
+                'transaction_id' => $transaction->id,
+                'installment_description' => $request->transaction_description . ' ' . $i . '/' . $installments,
+                'installment_value' => $installmentValue,
+                'card_id' => $request->card_id,
+                'pay_day' => $payDays[$i - 1]
+            ]);
+        }
+
+        LevelController::completeMission(4);
+
+        return response()->json([
+            'data' => [
+                'transaction' => $transaction,
+                'installments' => $response
+            ]
+        ], 201);
     }
 
     public function showTransactions(): JsonResponse
     {
-        try {
-            $transactions = Transaction::orderBy('date', 'desc')
-                ->where('user_id', Auth::id())
-                ->get();
+        $transactions = Transaction::orderBy('date', 'desc')
+            ->where('user_id', Auth::id())
+            ->get();
 
-            $most_expensive_transaction = Transaction::where([
-                    'user_id' => Auth::id(),
-                    'type_id' => 2,
-                ])
-                ->max('transaction_value') ?? 0;
+        $mostExpensiveTransaction = Transaction::where([
+            'user_id' => Auth::id(),
+            'type_id' => 2,
+        ])->max('transaction_value') ?? 0;
 
-            $response = ['data' => ['transactions' => []], 'most_expensive' => $most_expensive_transaction, 'total' => count($transactions)];
+        $response = ['data' => ['transactions' => []], 'most_expensive' => $mostExpensiveTransaction, 'total' => count($transactions)];
 
-            foreach($transactions as $transaction) {
-                $description = Category::find($transaction->category_id)?->category_description;
-                $transaction->category_description = $description;
-                array_push($response['data']['transactions'], $transaction);
-            }
-
-            return response()->json($response, 200);
-
-        } catch (\Exception $e) {
-            $response = [
-                "data" => [
-                    "message" => "Erro: Transação não encontrada."
-                ]
-            ];
-
-            return response()->json($response, 404);
+        foreach ($transactions as $transaction) {
+            $transaction->category_description = Category::find($transaction->category_id)?->category_description;
+            $response['data']['transactions'][] = $transaction;
         }
+
+        return response()->json($response, 200);
     }
 
     public function showTransaction($id): JsonResponse
     {
         try {
-
             $transaction = Transaction::where('user_id', Auth::id())->findOrFail($id);
+            $transaction->category_description = Category::find($transaction->category_id)?->category_description;
 
-            $description = Category::find($transaction->category_id)?->category_description;
-            $transaction->category_description = $description;
-
-            $response = [
+            return response()->json([
                 'data' => [
                     'transaction' => $transaction
                 ]
-            ];
-
-            return response()->json($response, 200);
-        } catch (\Exception $e) {
-            $response = [
-                "data" => [
-                    "message" => "Erro: Transação não encontrada."
+            ], 200);
+        } catch (ModelNotFoundException $e) {
+            return response()->json([
+                'data' => [
+                    'message' => 'Erro: Transacao nao encontrada.'
                 ]
-            ];
-            return response()->json($response, 404);
+            ], 404);
         }
     }
 
@@ -277,74 +244,51 @@ class TransactionController extends Controller
 
     public function showTransactionsByType($id): JsonResponse
     {
-        try {
-            
-            $transactions = Transaction::where([
-                'user_id' => Auth::user()->id,
-                'type_id' => $id
-            ])->orderBy('date', 'desc')->get();
+        $transactions = Transaction::where([
+            'user_id' => Auth::user()->id,
+            'type_id' => $id
+        ])->orderBy('date', 'desc')->get();
 
-            $response = ['data' => ['transactions' => []], 'total' => count($transactions)];
+        $response = ['data' => ['transactions' => []], 'total' => count($transactions)];
 
-            foreach ($transactions  as $transaction) {
-                $description = Category::find($transaction->category_id)?->category_description;
-                $transaction->category_description = $description;
-                array_push($response['data']['transactions'], $transaction);
-            }
-
-            return response()->json($response, 200);
-        } catch (\Exception $e) {
-            $response = [
-                "data" => [
-                    "message" => "Erro: Nenhuma transação encontrada."
-                ]
-            ];
-            return response()->json($response, 404);
+        foreach ($transactions as $transaction) {
+            $transaction->category_description = Category::find($transaction->category_id)?->category_description;
+            $response['data']['transactions'][] = $transaction;
         }
+
+        return response()->json($response, 200);
     }
 
     public function showTransactionsByCard($id): JsonResponse
     {
-        try {
+        $transactions = Transaction::where([
+            'card_id' => $id,
+            'user_id' => Auth::user()->id
+        ])->get();
 
-            $transactions = Transaction::where([
-                'card_id' => $id,
-                'user_id' => Auth::user()->id
-            ])->get();
+        $response = ['data' => ['transactions' => []]];
 
-            $response = ['data' => ['transactions' => []]];
-            foreach ($transactions as $transaction) {
-                $description = Category::find($transaction->category_id)?->category_description;
-                $transaction->category_description = $description;
-                array_push($response['data']['transactions'], $transaction);
-            }
-
-            return response()->json($response, 200);
-        } catch (\Exception $e) {
-            $response = [
-                "data" => [
-                    "message" => "Erro: Este cartão não possui transações."
-                ]
-            ];
-            return response()->json($response, 404);
+        foreach ($transactions as $transaction) {
+            $transaction->category_description = Category::find($transaction->category_id)?->category_description;
+            $response['data']['transactions'][] = $transaction;
         }
+
+        return response()->json($response, 200);
     }
 
     public function update(Request $request, $id): JsonResponse
     {
         try {
             $transaction = Transaction::where('user_id', Auth::id())->findOrFail($id);
-        } catch (\Exception $e) {
-            $response = [
-                "data" => [
-                    "message" => "Essa transação não existe ou já foi excluída."
+        } catch (ModelNotFoundException $e) {
+            return response()->json([
+                'data' => [
+                    'message' => 'Essa transacao nao existe ou ja foi excluida.'
                 ]
-            ];
-            return response()->json($response, 404);
+            ], 404);
         }
 
         try {
-
             $request->validate([
                 'transaction_description' => ['string', 'max:50'],
                 'category_id' => ['integer', 'min:0'],
@@ -354,18 +298,16 @@ class TransactionController extends Controller
                 'payment_method_id' => ['integer', 'min:1', 'max:4'],
                 'installments' => ['integer', 'min:1'],
             ], [
-                'date.before_or_equal' => 'O campo data deve ser uma data anterior ou igual à data atual.',
-                'transaction_value.numeric' => 'Informe um valor numérico válido para a transação.',
-                'transaction_value.min' => 'Informe um valor de transação maior que zero.',
-                'installments.integer' => 'O campo parcelas deve ser um número inteiro.',
-                'installments.min' => 'O número de parcelas deve ser no mínimo 1.',
+                'date.before_or_equal' => 'O campo data deve ser uma data anterior ou igual a data atual.',
+                'transaction_value.numeric' => 'Informe um valor numerico valido para a transacao.',
+                'transaction_value.min' => 'Informe um valor de transacao maior que zero.',
+                'installments.integer' => 'O campo parcelas deve ser um numero inteiro.',
+                'installments.min' => 'O numero de parcelas deve ser no minimo 1.',
             ]);
 
             $categoryIdToUpdate = $transaction->category_id;
 
-            // Tratando categoria no update com a mesma lógica do store
             if (!is_null($request->category_id)) {
-
                 if ((int) $request->category_id === 0) {
                     $category = CategoryController::storeInTransaction(
                         $request->category_description,
@@ -377,18 +319,18 @@ class TransactionController extends Controller
 
                 if (!$category) {
                     return response()->json([
-                        'message' => 'Categoria não encontrada.',
+                        'message' => 'Categoria nao encontrada.',
                         'errors' => [
-                            'category_id' => ['Categoria não encontrada.']
+                            'category_id' => ['Categoria nao encontrada.']
                         ]
                     ], 404);
                 }
 
                 if ((int) $category->type_id !== (int) $transaction->type_id) {
                     return response()->json([
-                        'message' => 'A categoria selecionada não corresponde ao tipo da transação.',
+                        'message' => 'A categoria selecionada nao corresponde ao tipo da transacao.',
                         'errors' => [
-                            'category_id' => ['A categoria selecionada não corresponde ao tipo da transação.']
+                            'category_id' => ['A categoria selecionada nao corresponde ao tipo da transacao.']
                         ]
                     ], 422);
                 }
@@ -408,9 +350,7 @@ class TransactionController extends Controller
             $transaction = Transaction::where('user_id', Auth::id())->findOrFail($id);
 
             if ($transaction->payment_method_id == 4) {
-
-                if (!(is_null($request->installments))) {
-
+                if (!is_null($request->installments)) {
                     Installment::where('transaction_id', $id)->delete();
 
                     $card = Card::where('user_id', Auth::id())->findOrFail($transaction->card_id);
@@ -436,8 +376,7 @@ class TransactionController extends Controller
                     }
                 }
 
-                if (!(is_null($request->transaction_value)) && is_null($request->installments)) {
-
+                if (!is_null($request->transaction_value) && is_null($request->installments)) {
                     $installmentsCount = (int) $transaction->installments;
                     $transactionValue = (float) $transaction->transaction_value;
                     $value = (float) number_format($transactionValue / $installmentsCount, 2, '.', '');
@@ -451,21 +390,18 @@ class TransactionController extends Controller
 
                     foreach ($installmentsCollection as $index => $installment) {
                         $installmentValue = ($index === 0) ? $firstInstallment : $value;
-
                         $installment->update([
                             'installment_value' => $installmentValue
                         ]);
                     }
                 }
 
-                if (!(is_null($request->transaction_description))) {
-
+                if (!is_null($request->transaction_description)) {
                     $count = 1;
                     Installment::where('transaction_id', $id)
                         ->orderBy('id')
                         ->get()
                         ->each(function ($installment) use ($request, &$count, $transaction) {
-
                             $installment->update([
                                 'installment_description' => $request->transaction_description . ' ' . $count . '/' . $transaction->installments,
                             ]);
@@ -474,8 +410,7 @@ class TransactionController extends Controller
                         });
                 }
 
-                if (!(is_null($request->date)) && is_null($request->installments)) {
-
+                if (!is_null($request->date) && is_null($request->installments)) {
                     $card = Card::where('user_id', Auth::id())->findOrFail($transaction->card_id);
                     $firstPayDay = $this->resolveFirstInstallmentPayDay($request->date, $card);
                     $payDays = $this->buildInstallmentDates($firstPayDay, (int) $transaction->installments);
@@ -495,28 +430,24 @@ class TransactionController extends Controller
 
             $installments = Installment::where('transaction_id', $id)->get();
 
-            $response = [
-                "data" => [
-                    "transaction" => $transaction,
-                    "installments" => $installments
+            return response()->json([
+                'data' => [
+                    'transaction' => $transaction,
+                    'installments' => $installments
                 ]
-            ];
-
-            return response()->json($response, 200);
+            ], 200);
 
         } catch (ValidationException $e) {
             return response()->json([
-                'message' => 'Os dados informados são inválidos.',
+                'message' => 'Os dados informados sao invalidos.',
                 'errors' => $e->errors()
             ], 422);
-
         } catch (\Exception $e) {
-            $response = [
-                "data" => [
-                    "message" => "Erro ao atualizar a transação."
+            return response()->json([
+                'data' => [
+                    'message' => 'Erro ao atualizar a transacao.'
                 ]
-            ];
-            return response()->json($response, 500);
+            ], 500);
         }
     }
 
@@ -529,22 +460,17 @@ class TransactionController extends Controller
                 $transaction->delete();
             });
 
-            $response = [
+            return response()->json([
                 'data' => [
-                    'message' => 'Transação excluída com sucesso.'
+                    'message' => 'Transacao excluida com sucesso.'
                 ]
-            ];
-
-            return response()->json($response, 200);
-        } catch (\Exception $e) {
-            $response = [
-                "data" => [
-                    "message" => "Erro: Esta transação não existe.",
+            ], 200);
+        } catch (ModelNotFoundException $e) {
+            return response()->json([
+                'data' => [
+                    'message' => 'Erro: Esta transacao nao existe.'
                 ]
-            ];
-
-            return response()->json($response, 404);
+            ], 404);
         }
     }
-
 }

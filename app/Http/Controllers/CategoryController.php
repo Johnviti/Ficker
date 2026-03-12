@@ -2,15 +2,14 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
-use Illuminate\Http\JsonResponse;
 use App\Models\Category;
 use App\Models\Transaction;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 
 class CategoryController extends Controller
 {
-
     public function store(Request $request): JsonResponse
     {
         $request->validate([
@@ -70,39 +69,23 @@ class CategoryController extends Controller
 
     public function showCategories(): JsonResponse
     {
-        try {
+        $categories = [];
 
-            $categories = [];
+        foreach (Auth::user()->categories as $category) {
+            $categorySpending = Transaction::whereMonth('date', now()->month)
+                ->where('category_id', $category->id)
+                ->where('type_id', 2)
+                ->sum('transaction_value');
 
-            foreach (Auth::user()->categories as $category) {
-
-                $category_spending = Transaction::whereMonth('date', now()->month)
-                    ->where('category_id', $category->id)
-                    ->where('type_id', 2)
-                    ->sum('transaction_value');
-
-                $category->category_spending = $category_spending;
-                array_push($categories, $category);
-            }
-
-            $response = [
-                'data' => [
-                    'categories' => $categories
-                ]
-            ];
-
-            return response()->json($response, 200);
-        } catch (\Exception $e) {
-            $errorMessage = "Nenhuma categoria foi encontrada";
-            $response = [
-                "data" => [
-                    "message" => $errorMessage,
-                    "error" => $e->getMessage()
-                ]
-            ];
-
-            return response()->json($response, 404);
+            $category->category_spending = $categorySpending;
+            $categories[] = $category;
         }
+
+        return response()->json([
+            'data' => [
+                'categories' => $categories
+            ]
+        ], 200);
     }
 
     public function showCategoriesByType($id): JsonResponse

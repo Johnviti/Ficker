@@ -2,11 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\Spending;
+use App\Models\Transaction;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
-use App\Models\Spending;
 use Illuminate\Support\Facades\Auth;
-use App\Models\Transaction;
 use Illuminate\Validation\ValidationException;
 
 class SpendingController extends Controller
@@ -43,32 +43,17 @@ class SpendingController extends Controller
         }
     }
 
-
     public function showSpending(): JsonResponse
     {
-        try {
-            $spending = Spending::where('user_id', Auth::user()->id)
-                ->latest()
-                ->first('planned_spending');
+        $spending = Spending::where('user_id', Auth::user()->id)
+            ->latest()
+            ->first('planned_spending');
 
-            $response = [
-                'data' => [
-                    'spending' => $spending
-                ]
-            ];
-
-            return response()->json($response, 200);
-        } catch (\Exception $e) {
-            $errorMessage = 'Erro ao exibit os gastos planejados.';
-            $response = [
-                'data' => [
-                    'message' => $errorMessage,
-                    'error' => $e->getMessage()
-                ]
-            ];
-
-            return response()->json($response, 500);
-        }
+        return response()->json([
+            'data' => [
+                'spending' => $spending
+            ]
+        ], 200);
     }
 
     public function update(Request $request): JsonResponse
@@ -100,7 +85,7 @@ class SpendingController extends Controller
                     'spending' => $spending
                 ]
             ], 200);
-        } catch (\Illuminate\Validation\ValidationException $e) {
+        } catch (ValidationException $e) {
             throw $e;
         } catch (\Exception $e) {
             return response()->json([
@@ -136,7 +121,7 @@ class SpendingController extends Controller
                     'message' => 'Gasto planejado deletado com sucesso.'
                 ]
             ], 200);
-        } catch (\Illuminate\Validation\ValidationException $e) {
+        } catch (ValidationException $e) {
             throw $e;
         } catch (\Exception $e) {
             return response()->json([
@@ -154,12 +139,12 @@ class SpendingController extends Controller
             if ($request->query('sort') == 'day') {
 
                 $spendingByDay = Transaction::where('user_id', Auth::user()->id)
-                ->selectRaw('MONTH(date) as month, DAY(date) as day, 
+                    ->selectRaw('MONTH(date) as month, DAY(date) as day, 
                             SUM(CASE WHEN type_id = 1 THEN transaction_value ELSE 0 END) as incomes,
                             SUM(CASE WHEN type_id = 2 AND payment_method_id != 4 THEN transaction_value ELSE 0 END) as spendings')
-                ->groupBy('day')
-                ->groupBy('month')
-                ->get();
+                    ->groupBy('day')
+                    ->groupBy('month')
+                    ->get();
 
                 $response = [
                     'data' => [
@@ -177,16 +162,15 @@ class SpendingController extends Controller
                     ->groupBy('month')
                     ->get();
 
-                $planned_spendings = Spending::where('user_id', Auth::user()->id)
+                $plannedSpendings = Spending::where('user_id', Auth::user()->id)
                     ->selectRaw('MONTH(created_at) as month, YEAR(created_at) as year, planned_spending')
                     ->groupBy('year')
                     ->groupBy('month')
                     ->get();
-                
 
                 $plannedMap = [];
 
-                foreach ($planned_spendings as $planned) {
+                foreach ($plannedSpendings as $planned) {
                     $key = $planned->year . '-' . $planned->month;
                     $plannedMap[$key] = $planned->planned_spending;
                 }
@@ -204,11 +188,11 @@ class SpendingController extends Controller
             } elseif ($request->query('sort') == 'year') {
 
                 $spendingByYear = Transaction::where('user_id', Auth::user()->id)
-                ->selectRaw('YEAR(date) as year, 
+                    ->selectRaw('YEAR(date) as year, 
                             SUM(CASE WHEN type_id = 1 THEN transaction_value ELSE 0 END) as incomes,
                             SUM(CASE WHEN type_id = 2 AND payment_method_id != 4 THEN transaction_value ELSE 0 END) as spendings')
-                ->groupBy('year')
-                ->get();
+                    ->groupBy('year')
+                    ->get();
 
                 $response = [
                     'data' => $spendingByYear
@@ -217,18 +201,18 @@ class SpendingController extends Controller
             } else {
                 return response()->json([
                     'data' => [
-                    'message' => 'Parâmetro sort inválido. Use day, month ou year.'
+                        'message' => 'Parâmetro sort inválido. Use day, month ou year.'
                     ]
                 ], 422);
             }
 
             return response()->json($response, 200);
         } catch (\Exception $e) {
-            $errorMessage = "Erro: Nenhuma entrada foi encontrada.";
+            $errorMessage = 'Erro: Nenhuma entrada foi encontrada.';
             $response = [
-                "data" => [
-                    "message" => $errorMessage,
-                    "error" => $e->getMessage()
+                'data' => [
+                    'message' => $errorMessage,
+                    'error' => $e->getMessage()
                 ]
             ];
             return response()->json($response, 500);
