@@ -36,6 +36,7 @@ return [
         'bot_token' => env('TELEGRAM_BOT_TOKEN'),
         'webhook_secret' => env('TELEGRAM_WEBHOOK_SECRET'),
         'link_code_ttl_minutes' => (int) env('TELEGRAM_LINK_CODE_TTL_MINUTES', 10),
+        'session_ttl_hours' => (int) env('TELEGRAM_SESSION_TTL_HOURS', 72),
     ],
 
 ];

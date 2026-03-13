@@ -4,8 +4,12 @@ namespace App\Jobs;
 
 use App\Models\TelegramWebhookEvent;
 use App\Services\Telegram\AccountLinkService;
+use App\Services\Telegram\TelegramFinancialQueryService;
+use App\Services\Telegram\TelegramFinancialReplyBuilder;
+use App\Services\Telegram\TelegramIntentResolver;
 use App\Services\Telegram\TelegramLinkReplyBuilder;
 use App\Services\Telegram\TelegramMessageNormalizer;
+use App\Services\Telegram\TelegramSessionService;
 use App\Services\Telegram\TelegramSender;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -25,6 +29,10 @@ class ProcessTelegramMessageJob implements ShouldQueue
         TelegramMessageNormalizer $normalizer,
         AccountLinkService $accountLinkService,
         TelegramLinkReplyBuilder $replyBuilder,
+        TelegramSessionService $sessionService,
+        TelegramIntentResolver $intentResolver,
+        TelegramFinancialQueryService $financialQueryService,
+        TelegramFinancialReplyBuilder $financialReplyBuilder,
         TelegramSender $telegramSender
     ): void
     {
@@ -43,9 +51,27 @@ class ProcessTelegramMessageJob implements ShouldQueue
             }
 
             $resolution = $accountLinkService->resolveLinkCode((string) ($normalizedPayload['text'] ?? ''));
-            $normalizedPayload['link_code_resolution'] = $this->toLoggableArray($resolution);
+            $resolutionForLog = $this->toLoggableArray($resolution);
+            $normalizedPayload['link_code_resolution'] = $resolutionForLog;
 
-            if (($resolution['status'] ?? null) !== 'valid') {
+            if (($resolution['status'] ?? null) === 'valid') {
+                $linkResult = $accountLinkService->linkTelegramAccount(
+                    $normalizedPayload,
+                    $resolution['link_code']
+                );
+
+                $normalizedPayload['link_result'] = $linkResult;
+                $normalizedPayload['reply'] = $this->replyToTelegram(
+                    $telegramSender,
+                    $replyBuilder->buildForLinkResult($linkResult),
+                    $normalizedPayload['telegram_chat_id'] ?? null
+                );
+
+                $event->markAsProcessed($normalizedPayload);
+                return;
+            }
+
+            if (($resolution['status'] ?? null) !== 'not_a_code') {
                 $normalizedPayload['reply'] = $this->replyToTelegram(
                     $telegramSender,
                     $replyBuilder->buildForResolution($resolution),
@@ -56,17 +82,43 @@ class ProcessTelegramMessageJob implements ShouldQueue
                 return;
             }
 
-            $linkResult = $accountLinkService->linkTelegramAccount(
-                $normalizedPayload,
-                $resolution['link_code']
-            );
+            $sessionResult = $sessionService->resolveActiveAccount($normalizedPayload);
+            $normalizedPayload['session'] = $this->toLoggableArray($sessionResult);
 
-            $normalizedPayload['link_result'] = $linkResult;
+            if (($sessionResult['status'] ?? null) !== 'active') {
+                $normalizedPayload['reply'] = $this->replyToTelegram(
+                    $telegramSender,
+                    $financialReplyBuilder->buildSessionReply($sessionResult),
+                    $normalizedPayload['telegram_chat_id'] ?? null
+                );
+
+                $event->markAsProcessed($normalizedPayload);
+                return;
+            }
+
+            $intent = $intentResolver->resolve((string) ($normalizedPayload['text'] ?? ''));
+            $normalizedPayload['intent'] = $intent;
+
+            $queryResult = match ($intent['intent']) {
+                'help', 'unknown' => [],
+                'get_balance' => $financialQueryService->getBalance($sessionResult['user_id']),
+                'get_next_invoice' => $financialQueryService->getNextInvoice($sessionResult['user_id']),
+                'get_last_transactions' => $financialQueryService->getLastTransactions($sessionResult['user_id']),
+                default => [],
+            };
+
+            $normalizedPayload['query_result'] = $queryResult;
             $normalizedPayload['reply'] = $this->replyToTelegram(
                 $telegramSender,
-                $replyBuilder->buildForLinkResult($linkResult),
+                $financialReplyBuilder->buildIntentReply($intent, $queryResult),
                 $normalizedPayload['telegram_chat_id'] ?? null
             );
+
+            if (in_array($intent['intent'], ['help', 'get_balance', 'get_next_invoice', 'get_last_transactions'], true)) {
+                $sessionService->refreshSession($sessionResult['account']);
+                $normalizedPayload['session']['status'] = 'active';
+                $normalizedPayload['session']['session_refreshed'] = true;
+            }
 
             $event->markAsProcessed($normalizedPayload);
         } catch (\Throwable $e) {
@@ -87,10 +139,10 @@ class ProcessTelegramMessageJob implements ShouldQueue
         return $telegramSender->sendMessage($chatId, $message);
     }
 
-    private function toLoggableArray(array $resolution): array
+    private function toLoggableArray(array $data): array
     {
-        unset($resolution['link_code']);
+        unset($data['link_code'], $data['account']);
 
-        return $resolution;
+        return $data;
     }
 }

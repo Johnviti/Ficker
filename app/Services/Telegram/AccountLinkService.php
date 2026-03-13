@@ -147,6 +147,8 @@ class AccountLinkService
                     'telegram_username' => $telegramUsername,
                     'status' => TelegramAccount::STATUS_VERIFIED,
                     'verified_at' => now(),
+                    'last_interaction_at' => now(),
+                    'session_expires_at' => now()->addHours((int) config('services.telegram.session_ttl_hours', 72)),
                     'revoked_at' => null,
                 ]);
             } else {
@@ -157,6 +159,8 @@ class AccountLinkService
                     'telegram_username' => $telegramUsername,
                     'status' => TelegramAccount::STATUS_VERIFIED,
                     'verified_at' => now(),
+                    'last_interaction_at' => now(),
+                    'session_expires_at' => now()->addHours((int) config('services.telegram.session_ttl_hours', 72)),
                 ]);
             }
 

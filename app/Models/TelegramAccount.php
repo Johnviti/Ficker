@@ -21,11 +21,15 @@ class TelegramAccount extends Model
         'telegram_username',
         'status',
         'verified_at',
+        'last_interaction_at',
+        'session_expires_at',
         'revoked_at',
     ];
 
     protected $casts = [
         'verified_at' => 'datetime',
+        'last_interaction_at' => 'datetime',
+        'session_expires_at' => 'datetime',
         'revoked_at' => 'datetime',
     ];
 
@@ -56,10 +60,29 @@ class TelegramAccount extends Model
         return $this->status === self::STATUS_VERIFIED && is_null($this->revoked_at);
     }
 
+    public function isSessionActive(): bool
+    {
+        return $this->isActive()
+            && !is_null($this->session_expires_at)
+            && $this->session_expires_at->isFuture();
+    }
+
+    public function refreshSession(): void
+    {
+        $ttlHours = (int) config('services.telegram.session_ttl_hours', 72);
+
+        $this->update([
+            'last_interaction_at' => now(),
+            'session_expires_at' => now()->addHours($ttlHours),
+        ]);
+    }
+
     public function revoke(): void
     {
         $this->update([
             'status' => self::STATUS_REVOKED,
+            'last_interaction_at' => null,
+            'session_expires_at' => null,
             'revoked_at' => now(),
         ]);
     }
