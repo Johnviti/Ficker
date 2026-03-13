@@ -31,15 +31,4 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
-    'whatsapp' => [
-        'enabled' => env('WHATSAPP_ENABLED', false),
-        'provider' => env('WHATSAPP_PROVIDER', 'meta'),
-        'webhook_verify_token' => env('WHATSAPP_WEBHOOK_VERIFY_TOKEN'),
-        'webhook_secret' => env('WHATSAPP_WEBHOOK_SECRET'),
-        'link_code_ttl_minutes' => (int) env('WHATSAPP_LINK_CODE_TTL_MINUTES', 10),
-        'api_version' => env('WHATSAPP_API_VERSION'),
-        'access_token' => env('WHATSAPP_ACCESS_TOKEN'),
-        'phone_number_id' => env('WHATSAPP_PHONE_NUMBER_ID'),
-    ],
-
 ];

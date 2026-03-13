@@ -9,13 +9,6 @@ use App\Http\Controllers\SpendingController;
 use App\Http\Controllers\BalanceController;
 use App\Http\Controllers\InstallmentController;
 use App\Http\Controllers\PaymentController;
-use App\Http\Controllers\WhatsAppLinkController;
-use App\Http\Controllers\WhatsAppWebhookController;
-
-Route::prefix('whatsapp')->group(function () {
-    Route::get('/webhook', [WhatsAppWebhookController::class, 'verify']);
-    Route::post('/webhook', [WhatsAppWebhookController::class, 'receive']);
-});
 
 Route::middleware(['auth:sanctum'])->get('/user', function (Request $request) {
     return $request->user();
@@ -61,7 +54,6 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
     //Rotas dos métodos de pagamento (id e descrição)
     Route::get('/payment/methods', [PaymentController::class, 'showPaymentMethods']);
-    Route::post('/whatsapp/link-code', [WhatsAppLinkController::class, 'generateLinkCode']);
 });
 
 require __DIR__ . '/auth.php';
