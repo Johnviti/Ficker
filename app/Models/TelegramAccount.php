@@ -2,7 +2,6 @@
 
 namespace App\Models;
 
-use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Builder;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -70,12 +69,11 @@ class TelegramAccount extends Model
 
     public function refreshSession(): void
     {
-        $now = Carbon::now((string) config('services.telegram.timezone', 'America/Sao_Paulo'));
         $ttlHours = (int) config('services.telegram.session_ttl_hours', 72);
 
         $this->update([
-            'last_interaction_at' => $now,
-            'session_expires_at' => $now->copy()->addHours($ttlHours),
+            'last_interaction_at' => now(),
+            'session_expires_at' => now()->addHours($ttlHours),
         ]);
     }
 
@@ -85,7 +83,7 @@ class TelegramAccount extends Model
             'status' => self::STATUS_REVOKED,
             'last_interaction_at' => null,
             'session_expires_at' => null,
-            'revoked_at' => Carbon::now((string) config('services.telegram.timezone', 'America/Sao_Paulo')),
+            'revoked_at' => now(),
         ]);
     }
 }
