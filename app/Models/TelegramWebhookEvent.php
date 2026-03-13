@@ -71,12 +71,18 @@ class TelegramWebhookEvent extends Model
         $this->update($data);
     }
 
-    public function markAsFailed(string $reason): void
+    public function markAsFailed(string $reason, array $normalizedPayload = []): void
     {
-        $this->update([
+        $data = [
             'processing_status' => self::STATUS_FAILED,
             'processed_at' => now(),
             'failure_reason' => $reason,
-        ]);
+        ];
+
+        if ($normalizedPayload !== []) {
+            $data['normalized_payload_json'] = $normalizedPayload;
+        }
+
+        $this->update($data);
     }
 }

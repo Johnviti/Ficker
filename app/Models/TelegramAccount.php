@@ -51,6 +51,11 @@ class TelegramAccount extends Model
         return $query->where('telegram_user_id', $telegramUserId);
     }
 
+    public function isActive(): bool
+    {
+        return $this->status === self::STATUS_VERIFIED && is_null($this->revoked_at);
+    }
+
     public function revoke(): void
     {
         $this->update([
