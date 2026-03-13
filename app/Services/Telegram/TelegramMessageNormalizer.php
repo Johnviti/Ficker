@@ -2,6 +2,8 @@
 
 namespace App\Services\Telegram;
 
+use Carbon\Carbon;
+
 class TelegramMessageNormalizer
 {
     public function normalize(array $payload): array
@@ -27,7 +29,7 @@ class TelegramMessageNormalizer
             'telegram_chat_id' => data_get($message, 'chat.id'),
             'telegram_username' => data_get($message, 'from.username'),
             'text' => $text,
-            'received_at' => now()->toDateTimeString(),
+            'received_at' => Carbon::now((string) config('services.telegram.timezone', 'America/Sao_Paulo'))->toDateTimeString(),
             'is_supported' => $text !== '',
         ];
     }

@@ -35,6 +35,7 @@ return [
         'enabled' => env('TELEGRAM_ENABLED', false),
         'bot_token' => env('TELEGRAM_BOT_TOKEN'),
         'webhook_secret' => env('TELEGRAM_WEBHOOK_SECRET'),
+        'timezone' => env('TELEGRAM_TIMEZONE', 'America/Sao_Paulo'),
         'link_code_ttl_minutes' => (int) env('TELEGRAM_LINK_CODE_TTL_MINUTES', 10),
         'session_ttl_hours' => (int) env('TELEGRAM_SESSION_TTL_HOURS', 72),
     ],

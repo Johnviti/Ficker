@@ -9,19 +9,19 @@ class TelegramIntentResolver
         $normalizedText = $this->normalize($text);
 
         return match (true) {
-            in_array($normalizedText, ['/start', 'ajuda', 'menu'], true) => [
+            in_array($normalizedText, ['/start', 'ajuda', 'menu', '0'], true) => [
                 'intent' => 'help',
                 'text' => $normalizedText,
             ],
-            in_array($normalizedText, ['saldo', 'meu saldo'], true) => [
+            in_array($normalizedText, ['1', 'saldo', 'meu saldo'], true) => [
                 'intent' => 'get_balance',
                 'text' => $normalizedText,
             ],
-            in_array($normalizedText, ['fatura', 'proxima fatura'], true) => [
+            in_array($normalizedText, ['2', 'fatura', 'proxima fatura'], true) => [
                 'intent' => 'get_next_invoice',
                 'text' => $normalizedText,
             ],
-            in_array($normalizedText, ['ultimas transacoes', 'ultimas 5', 'ultimas 5 transacoes'], true) => [
+            in_array($normalizedText, ['3', 'ultimas transacoes', 'ultimas 5', 'ultimas 5 transacoes'], true) => [
                 'intent' => 'get_last_transactions',
                 'text' => $normalizedText,
             ],

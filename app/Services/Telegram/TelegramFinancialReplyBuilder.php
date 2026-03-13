@@ -7,9 +7,31 @@ class TelegramFinancialReplyBuilder
     public function buildSessionReply(array $sessionResult): string
     {
         return match ($sessionResult['status'] ?? 'not_linked') {
-            'session_expired' => 'Seu acesso no Telegram expirou por inatividade. Gere um novo codigo no Ficker para reconectar sua conta.',
-            'revoked', 'not_linked' => 'Seu Telegram ainda nao esta conectado ao Ficker. Gere um codigo no app e envie aqui para vincular sua conta.',
-            default => 'Nao consegui validar sua sessao no Telegram agora.',
+            'session_expired' => implode("\n", [
+                'Seu acesso no Telegram expirou por inatividade.',
+                'Gere um novo codigo no Ficker para reconectar sua conta.',
+                '',
+                'Depois disso, voce pode pedir:',
+                '0 - ajuda',
+                '1 - saldo',
+                '2 - fatura',
+                '3 - ultimas transacoes',
+            ]),
+            'revoked', 'not_linked' => implode("\n", [
+                'Seu Telegram ainda nao esta conectado ao Ficker.',
+                'Gere um codigo no app e envie aqui para vincular sua conta.',
+                '',
+                'Depois disso, voce pode pedir:',
+                '0 - ajuda',
+                '1 - saldo',
+                '2 - fatura',
+                '3 - ultimas transacoes',
+            ]),
+            default => implode("\n", [
+                'Nao consegui validar sua sessao no Telegram agora.',
+                'Tente novamente em instantes ou use:',
+                '0 - ajuda',
+            ]),
         };
     }
 
@@ -28,9 +50,10 @@ class TelegramFinancialReplyBuilder
     {
         return implode("\n", [
             'Voce pode pedir:',
-            'saldo',
-            'fatura',
-            'ultimas transacoes',
+            '0 - ajuda',
+            '1 - saldo',
+            '2 - fatura',
+            '3 - ultimas transacoes',
         ]);
     }
 
@@ -82,9 +105,10 @@ class TelegramFinancialReplyBuilder
         return implode("\n", [
             'Nao entendi o que voce quer consultar.',
             'Tente uma destas opcoes:',
-            'saldo',
-            'fatura',
-            'ultimas transacoes',
+            '0 - ajuda',
+            '1 - saldo',
+            '2 - fatura',
+            '3 - ultimas transacoes',
         ]);
     }
 

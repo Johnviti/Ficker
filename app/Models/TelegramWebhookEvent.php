@@ -2,6 +2,7 @@
 
 namespace App\Models;
 
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 
@@ -46,7 +47,7 @@ class TelegramWebhookEvent extends Model
     {
         $data = [
             'processing_status' => self::STATUS_PROCESSED,
-            'processed_at' => now(),
+            'processed_at' => Carbon::now((string) config('services.telegram.timezone', 'America/Sao_Paulo')),
         ];
 
         if ($normalizedPayload !== []) {
@@ -60,7 +61,7 @@ class TelegramWebhookEvent extends Model
     {
         $data = [
             'processing_status' => self::STATUS_IGNORED,
-            'processed_at' => now(),
+            'processed_at' => Carbon::now((string) config('services.telegram.timezone', 'America/Sao_Paulo')),
             'failure_reason' => $reason,
         ];
 
@@ -75,7 +76,7 @@ class TelegramWebhookEvent extends Model
     {
         $data = [
             'processing_status' => self::STATUS_FAILED,
-            'processed_at' => now(),
+            'processed_at' => Carbon::now((string) config('services.telegram.timezone', 'America/Sao_Paulo')),
             'failure_reason' => $reason,
         ];
 

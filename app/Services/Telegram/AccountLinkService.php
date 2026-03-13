@@ -4,6 +4,7 @@ namespace App\Services\Telegram;
 
 use App\Models\TelegramAccount;
 use App\Models\TelegramLinkCode;
+use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 
 class AccountLinkService
@@ -12,6 +13,8 @@ class AccountLinkService
 
     public function generateLinkCode(int $userId): TelegramLinkCode
     {
+        $now = Carbon::now((string) config('services.telegram.timezone', 'America/Sao_Paulo'));
+
         TelegramLinkCode::where('user_id', $userId)
             ->active()
             ->get()
@@ -22,7 +25,7 @@ class AccountLinkService
         return TelegramLinkCode::create([
             'user_id' => $userId,
             'code' => $this->generateUniqueCode(),
-            'expires_at' => now()->addMinutes((int) config('services.telegram.link_code_ttl_minutes', 10)),
+            'expires_at' => $now->copy()->addMinutes((int) config('services.telegram.link_code_ttl_minutes', 10)),
             'attempts' => 0,
         ]);
     }
@@ -122,6 +125,8 @@ class AccountLinkService
         }
 
         return DB::transaction(function () use ($linkCode, $telegramUserId, $telegramChatId, $telegramUsername, $userId) {
+            $now = Carbon::now((string) config('services.telegram.timezone', 'America/Sao_Paulo'));
+
             $targetAccount = TelegramAccount::query()
                 ->where('user_id', $userId)
                 ->orWhere('telegram_chat_id', $telegramChatId)
@@ -146,9 +151,9 @@ class AccountLinkService
                     'telegram_chat_id' => $telegramChatId,
                     'telegram_username' => $telegramUsername,
                     'status' => TelegramAccount::STATUS_VERIFIED,
-                    'verified_at' => now(),
-                    'last_interaction_at' => now(),
-                    'session_expires_at' => now()->addHours((int) config('services.telegram.session_ttl_hours', 72)),
+                    'verified_at' => $now,
+                    'last_interaction_at' => $now,
+                    'session_expires_at' => $now->copy()->addHours((int) config('services.telegram.session_ttl_hours', 72)),
                     'revoked_at' => null,
                 ]);
             } else {
@@ -158,9 +163,9 @@ class AccountLinkService
                     'telegram_chat_id' => $telegramChatId,
                     'telegram_username' => $telegramUsername,
                     'status' => TelegramAccount::STATUS_VERIFIED,
-                    'verified_at' => now(),
-                    'last_interaction_at' => now(),
-                    'session_expires_at' => now()->addHours((int) config('services.telegram.session_ttl_hours', 72)),
+                    'verified_at' => $now,
+                    'last_interaction_at' => $now,
+                    'session_expires_at' => $now->copy()->addHours((int) config('services.telegram.session_ttl_hours', 72)),
                 ]);
             }
 

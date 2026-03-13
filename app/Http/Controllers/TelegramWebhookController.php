@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Jobs\ProcessTelegramMessageJob;
 use App\Models\TelegramWebhookEvent;
 use App\Services\Telegram\TelegramWebhookValidator;
+use Carbon\Carbon;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 
@@ -34,7 +35,7 @@ class TelegramWebhookController extends Controller
             'event_type' => $this->extractEventType($payload),
             'payload_json' => $payload,
             'processing_status' => TelegramWebhookEvent::STATUS_RECEIVED,
-            'received_at' => now(),
+            'received_at' => Carbon::now((string) config('services.telegram.timezone', 'America/Sao_Paulo')),
         ]);
 
         $event->markAsQueued();
