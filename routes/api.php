@@ -9,6 +9,12 @@ use App\Http\Controllers\SpendingController;
 use App\Http\Controllers\BalanceController;
 use App\Http\Controllers\InstallmentController;
 use App\Http\Controllers\PaymentController;
+use App\Http\Controllers\TelegramLinkController;
+use App\Http\Controllers\TelegramWebhookController;
+
+Route::prefix('telegram')->group(function () {
+    Route::post('/webhook/{secret}', [TelegramWebhookController::class, 'receive']);
+});
 
 Route::middleware(['auth:sanctum'])->get('/user', function (Request $request) {
     return $request->user();
@@ -54,6 +60,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
 
     //Rotas dos métodos de pagamento (id e descrição)
     Route::get('/payment/methods', [PaymentController::class, 'showPaymentMethods']);
+    Route::post('/telegram/link-code', [TelegramLinkController::class, 'generateLinkCode']);
 });
 
 require __DIR__ . '/auth.php';

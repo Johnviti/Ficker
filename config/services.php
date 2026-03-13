@@ -31,4 +31,11 @@ return [
         'region' => env('AWS_DEFAULT_REGION', 'us-east-1'),
     ],
 
+    'telegram' => [
+        'enabled' => env('TELEGRAM_ENABLED', false),
+        'bot_token' => env('TELEGRAM_BOT_TOKEN'),
+        'webhook_secret' => env('TELEGRAM_WEBHOOK_SECRET'),
+        'link_code_ttl_minutes' => (int) env('TELEGRAM_LINK_CODE_TTL_MINUTES', 10),
+    ],
+
 ];
