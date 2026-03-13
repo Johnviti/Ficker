@@ -16,7 +16,7 @@ return new class extends Migration
             $table->id();
             $table->foreignIdFor(User::class)->constrained()->cascadeOnDelete();
             $table->string('code', 30)->unique();
-            $table->timestamp('expires_at');
+            $table->dateTime('expires_at');
             $table->timestamp('used_at')->nullable();
             $table->unsignedInteger('attempts')->default(0);
             $table->timestamps();
