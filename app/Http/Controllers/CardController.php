@@ -195,7 +195,11 @@ class CardController extends Controller
                     'open_total' => $openTotal,
                     'is_paid' => $openTotal <= 0,
                     'installments_count' => $items->count(),
-                    'paid_at' => $lastPaidAt ? Carbon::parse($lastPaidAt)->toDateTimeString() : null,
+                    'paid_at' => $lastPaidAt
+                        ? Carbon::parse($lastPaidAt)
+                            ->timezone('America/Sao_Paulo')
+                            ->format('Y-m-d H:i:s')
+                        : null,
                 ];
             }
 
