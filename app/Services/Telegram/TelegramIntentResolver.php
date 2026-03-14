@@ -57,6 +57,14 @@ class TelegramIntentResolver
                 'intent' => 'get_balance',
                 'text' => $normalizedText,
             ],
+            in_array($normalizedText, ['5', 'nova entrada', 'entrada'], true) => [
+                'intent' => 'start_income_flow',
+                'text' => $normalizedText,
+            ],
+            in_array($normalizedText, ['6', 'nova saida', 'saida'], true) => [
+                'intent' => 'start_expense_flow',
+                'text' => $normalizedText,
+            ],
             in_array($normalizedText, ['ajuda'], true) => [
                 'intent' => 'help',
                 'text' => $normalizedText,

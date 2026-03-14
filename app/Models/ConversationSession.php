@@ -14,9 +14,25 @@ class ConversationSession extends Model
     public const STATE_CARDS_SUMMARY = 'cards_summary';
     public const STATE_INVOICES_MENU = 'invoices_menu';
     public const STATE_TRANSACTIONS_PAGE = 'transactions_page';
+    public const STATE_TRANSACTION_INCOME_VALUE = 'transaction_income_value';
+    public const STATE_TRANSACTION_INCOME_DESCRIPTION = 'transaction_income_description';
+    public const STATE_TRANSACTION_INCOME_CATEGORY = 'transaction_income_category';
+    public const STATE_TRANSACTION_INCOME_DATE = 'transaction_income_date';
+    public const STATE_TRANSACTION_INCOME_CONFIRM = 'transaction_income_confirm';
+    public const STATE_TRANSACTION_EXPENSE_VALUE = 'transaction_expense_value';
+    public const STATE_TRANSACTION_EXPENSE_DESCRIPTION = 'transaction_expense_description';
+    public const STATE_TRANSACTION_EXPENSE_CATEGORY = 'transaction_expense_category';
+    public const STATE_TRANSACTION_EXPENSE_DATE = 'transaction_expense_date';
+    public const STATE_TRANSACTION_EXPENSE_PAYMENT_METHOD = 'transaction_expense_payment_method';
+    public const STATE_TRANSACTION_EXPENSE_CARD = 'transaction_expense_card';
+    public const STATE_TRANSACTION_EXPENSE_INSTALLMENTS = 'transaction_expense_installments';
+    public const STATE_TRANSACTION_EXPENSE_CONFIRM = 'transaction_expense_confirm';
     public const CONTEXT_PREVIOUS_STATE = 'previous_state';
     public const CONTEXT_PAGE = 'page';
     public const CONTEXT_PER_PAGE = 'per_page';
+    public const CONTEXT_FLOW = 'flow';
+    public const CONTEXT_DRAFT = 'draft';
+    public const CONTEXT_STEP_HISTORY = 'step_history';
 
     protected $fillable = [
         'channel',

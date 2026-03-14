@@ -17,6 +17,8 @@ class TelegramFinancialReplyBuilder
                 '2 - faturas',
                 '3 - transacoes',
                 '4 - saldo geral',
+                '5 - nova entrada',
+                '6 - nova saida',
             ]),
             'revoked', 'not_linked' => implode("\n", [
                 'Seu Telegram ainda nao esta conectado ao Ficker.',
@@ -28,6 +30,8 @@ class TelegramFinancialReplyBuilder
                 '2 - faturas',
                 '3 - transacoes',
                 '4 - saldo geral',
+                '5 - nova entrada',
+                '6 - nova saida',
             ]),
             default => implode("\n", [
                 'Nao consegui validar sua sessao no Telegram agora.',
@@ -60,6 +64,8 @@ class TelegramFinancialReplyBuilder
             '2 - faturas',
             '3 - transacoes',
             '4 - saldo geral',
+            '5 - nova entrada',
+            '6 - nova saida',
         ]);
     }
 
@@ -82,6 +88,8 @@ class TelegramFinancialReplyBuilder
             '2 - faturas',
             '3 - transacoes',
             '4 - saldo geral',
+            '5 - nova entrada',
+            '6 - nova saida',
         ]);
     }
 

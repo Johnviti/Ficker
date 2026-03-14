@@ -15,6 +15,8 @@ class TelegramMenuBuilder
             '2 - faturas',
             '3 - transacoes',
             '4 - saldo geral',
+            '5 - nova entrada',
+            '6 - nova saida',
         ]);
     }
 

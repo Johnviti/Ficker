@@ -2,10 +2,12 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\TransactionCreationException;
 use App\Models\Card;
 use App\Models\Category;
 use App\Models\Installment;
 use App\Models\Transaction;
+use App\Services\Transactions\TransactionCreationService;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
@@ -16,6 +18,11 @@ use Illuminate\Validation\ValidationException;
 
 class TransactionController extends Controller
 {
+    public function __construct(
+        private readonly TransactionCreationService $transactionCreationService
+    ) {
+    }
+
     private function resolveFirstInstallmentPayDay(string $transactionDate, Card $card): string
     {
         $purchaseDate = Carbon::parse($transactionDate)->startOfDay();
@@ -68,123 +75,22 @@ class TransactionController extends Controller
 
     public function store(Request $request): JsonResponse
     {
-        $request->validate([
-            'transaction_description' => ['required', 'string', 'max:50'],
-            'category_id' => ['required', 'integer', 'min:0'],
-            'category_description' => ['required_if:category_id,0', 'string', 'max:50'],
-            'date' => ['required', 'date', 'before_or_equal:today'],
-            'type_id' => ['required', 'integer', 'min:1', 'max:2'],
-            'transaction_value' => ['required', 'numeric', 'min:0.01'],
-            'payment_method_id' => ['required_if:type_id,2', 'prohibited_if:type_id,1', 'integer'],
-            'installments' => ['required_if:payment_method_id,4', 'prohibited_unless:payment_method_id,4', 'integer', 'min:1'],
-            'card_id' => ['required_if:payment_method_id,4', 'prohibited_unless:payment_method_id,4', 'integer']
-        ], [
-            'date.before_or_equal' => 'O campo data deve ser uma data anterior ou igual a data atual.',
-            'installments.required_if' => 'O campo parcelas e obrigatorio para compras no cartao de credito.',
-            'installments.integer' => 'O campo parcelas deve ser um numero inteiro.',
-            'installments.min' => 'O numero de parcelas deve ser no minimo 1.',
-            'card_id.required_if' => 'O cartao e obrigatorio para compras no cartao de credito.',
-            'transaction_value.numeric' => 'Informe um valor numerico valido para a transacao.',
-            'transaction_value.min' => 'Informe um valor de transacao maior que zero.'
-        ]);
-
-        $card = null;
-
-        if ((int) $request->payment_method_id === 4) {
-            $card = Card::where('user_id', Auth::id())->find($request->card_id);
-
-            if (!$card) {
-                return $this->errorResponse('Cartao nao encontrado.', 404, [
-                    'card_id' => ['Cartao nao encontrado.']
-                ]);
-            }
-        }
-
-        if ((int) $request->category_id === 0) {
-            $category = CategoryController::storeInTransaction(
-                $request->category_description,
-                $request->type_id
-            );
-        } else {
-            $category = Category::find($request->category_id);
-        }
-
-        if (!$category) {
-            return $this->errorResponse('Categoria nao encontrada.', 404, [
-                'category_id' => ['Categoria nao encontrada.']
-            ]);
-        }
-
-        if ((int) $category->type_id !== (int) $request->type_id) {
-            return $this->errorResponse('A categoria selecionada nao corresponde ao tipo da transacao.', 422, [
-                'category_id' => ['A categoria selecionada nao corresponde ao tipo da transacao.']
-            ]);
-        }
-
-        if (is_null($request->installments)) {
-            $transaction = Transaction::create([
-                'user_id' => Auth::id(),
-                'category_id' => $category->id,
-                'type_id' => $request->type_id,
-                'payment_method_id' => $request->payment_method_id,
-                'transaction_description' => $request->transaction_description,
-                'date' => $request->date,
-                'transaction_value' => $request->transaction_value,
-            ]);
-
-            LevelController::completeMission($request->type_id);
+        try {
+            $result = $this->transactionCreationService->create(Auth::id(), $request->all());
 
             return response()->json([
                 'data' => [
-                    'transaction' => $transaction,
-                    'installments' => []
+                    'transaction' => $result['transaction'],
+                    'installments' => $result['installments'],
                 ]
             ], 201);
+        } catch (ValidationException $e) {
+            return $this->errorResponse('Os dados informados sao invalidos.', 422, $e->errors());
+        } catch (TransactionCreationException $e) {
+            return $this->errorResponse($e->getMessage(), $e->status(), $e->errors());
+        } catch (\Throwable $e) {
+            return $this->errorResponse('Erro ao criar a transacao.', 500);
         }
-
-        $transaction = Transaction::create([
-            'user_id' => Auth::id(),
-            'category_id' => $category->id,
-            'type_id' => $request->type_id,
-            'payment_method_id' => $request->payment_method_id,
-            'card_id' => $request->card_id,
-            'transaction_description' => $request->transaction_description,
-            'date' => $request->date,
-            'transaction_value' => $request->transaction_value,
-            'installments' => $request->installments,
-        ]);
-
-        $installments = (int) $request->installments;
-        $transactionValue = (float) $request->transaction_value;
-        $firstPayDay = $this->resolveFirstInstallmentPayDay($request->date, $card);
-        $payDays = $this->buildInstallmentDates($firstPayDay, $installments);
-
-        $value = (float) number_format($transactionValue / $installments, 2, '.', '');
-        $firstInstallment = $transactionValue - ($value * ($installments - 1));
-        $firstInstallment = (float) number_format($firstInstallment, 2, '.', '');
-
-        $response = [];
-
-        for ($i = 1; $i <= $installments; $i++) {
-            $installmentValue = ($i === 1) ? $firstInstallment : $value;
-
-            $response[] = Installment::create([
-                'transaction_id' => $transaction->id,
-                'installment_description' => $request->transaction_description . ' ' . $i . '/' . $installments,
-                'installment_value' => $installmentValue,
-                'card_id' => $request->card_id,
-                'pay_day' => $payDays[$i - 1]
-            ]);
-        }
-
-        LevelController::completeMission(4);
-
-        return response()->json([
-            'data' => [
-                'transaction' => $transaction,
-                'installments' => $response
-            ]
-        ], 201);
     }
 
     public function showTransactions(): JsonResponse

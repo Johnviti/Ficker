@@ -15,6 +15,7 @@ use App\Services\Telegram\TelegramMessageNormalizer;
 use App\Services\Telegram\TelegramRateLimitService;
 use App\Services\Telegram\TelegramSessionService;
 use App\Services\Telegram\TelegramSender;
+use App\Services\Telegram\TelegramTransactionFlowService;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -42,7 +43,8 @@ class ProcessTelegramMessageJob implements ShouldQueue
         TelegramMenuBuilder $menuBuilder,
         TelegramRateLimitService $rateLimitService,
         TelegramAuditService $auditService,
-        TelegramSender $telegramSender
+        TelegramSender $telegramSender,
+        TelegramTransactionFlowService $transactionFlowService
     ): void
     {
         $event = TelegramWebhookEvent::find($this->eventId);
@@ -160,6 +162,45 @@ class ProcessTelegramMessageJob implements ShouldQueue
                 'context' => $conversationSession->context_json ?? [],
             ];
 
+            if ($transactionFlowService->isWizardState($conversationSession->state)) {
+                $flowResult = $transactionFlowService->handleInput(
+                    $conversationSession,
+                    $sessionResult['user_id'],
+                    (string) ($normalizedPayload['text'] ?? '')
+                );
+
+                $normalizedPayload['transaction_flow'] = $this->toLoggableArray($flowResult);
+                $normalizedPayload['reply'] = $this->replyToTelegram(
+                    $telegramSender,
+                    $flowResult['message'],
+                    $normalizedPayload['telegram_chat_id'] ?? null
+                );
+
+                $sessionService->refreshSession($sessionResult['account']);
+                $normalizedPayload['session']['status'] = 'active';
+                $normalizedPayload['session']['session_refreshed'] = true;
+
+                if (($flowResult['status'] ?? null) === 'created') {
+                    $action = (($flowResult['flow'] ?? 'expense') === 'income')
+                        ? 'create_income_confirmed'
+                        : 'create_expense_confirmed';
+
+                    $auditService->logAction($normalizedPayload, $sessionResult, $action, $normalizedPayload['reply'], [
+                        'transaction_id' => $flowResult['result']['transaction']->id ?? null,
+                        'installments_count' => count($flowResult['result']['installments'] ?? []),
+                    ]);
+                }
+
+                if (($flowResult['status'] ?? null) === 'cancelled') {
+                    $auditService->logAction($normalizedPayload, $sessionResult, 'create_flow_cancelled', $normalizedPayload['reply'], [
+                        'flow' => $flowResult['flow'] ?? null,
+                    ]);
+                }
+
+                $event->markAsProcessed($normalizedPayload);
+                return;
+            }
+
             $intent = $intentResolver->resolve(
                 (string) ($normalizedPayload['text'] ?? ''),
                 $conversationSession->state
@@ -210,6 +251,22 @@ class ProcessTelegramMessageJob implements ShouldQueue
 
             $message = match ($intentName) {
                 'help', 'main_menu' => $menuBuilder->buildMainMenu(),
+                'start_income_flow' => $this->startTransactionFlow(
+                    $transactionFlowService,
+                    $conversationSession,
+                    $sessionResult,
+                    $normalizedPayload,
+                    $auditService,
+                    'income'
+                ),
+                'start_expense_flow' => $this->startTransactionFlow(
+                    $transactionFlowService,
+                    $conversationSession,
+                    $sessionResult,
+                    $normalizedPayload,
+                    $auditService,
+                    'expense'
+                ),
                 'go_back' => $this->buildBackReply(
                     $conversationService,
                     $conversationSession,
@@ -267,6 +324,8 @@ class ProcessTelegramMessageJob implements ShouldQueue
                 'transactions_next_page',
                 'transactions_previous_page',
                 'get_balance',
+                'start_income_flow',
+                'start_expense_flow',
             ], true)) {
                 $sessionService->refreshSession($sessionResult['account']);
                 $normalizedPayload['session']['status'] = 'active';
@@ -329,6 +388,13 @@ class ProcessTelegramMessageJob implements ShouldQueue
     {
         unset($data['link_code'], $data['account']);
 
+        if (isset($data['result']['transaction'])) {
+            $data['result'] = [
+                'transaction_id' => $data['result']['transaction']->id ?? null,
+                'installments_count' => count($data['result']['installments'] ?? []),
+            ];
+        }
+
         return $data;
     }
 
@@ -385,5 +451,30 @@ class ProcessTelegramMessageJob implements ShouldQueue
         ], $userId, $rememberPrevious);
 
         return $menuBuilder->buildTransactionsMenu($queryResult);
+    }
+
+    private function startTransactionFlow(
+        TelegramTransactionFlowService $transactionFlowService,
+        $conversationSession,
+        array $sessionResult,
+        array &$normalizedPayload,
+        TelegramAuditService $auditService,
+        string $flow
+    ): string {
+        $result = $flow === 'income'
+            ? $transactionFlowService->startIncomeFlow($conversationSession, $sessionResult['user_id'])
+            : $transactionFlowService->startExpenseFlow($conversationSession, $sessionResult['user_id']);
+
+        $normalizedPayload['transaction_flow'] = $this->toLoggableArray($result);
+
+        $auditService->logAction(
+            $normalizedPayload,
+            $sessionResult,
+            $flow === 'income' ? 'create_income_started' : 'create_expense_started',
+            ['success' => true],
+            ['flow' => $flow]
+        );
+
+        return $result['message'];
     }
 }
