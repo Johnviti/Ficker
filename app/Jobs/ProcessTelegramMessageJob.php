@@ -250,7 +250,12 @@ class ProcessTelegramMessageJob implements ShouldQueue
             }
 
             $message = match ($intentName) {
-                'help', 'main_menu' => $menuBuilder->buildMainMenu(),
+                'help', 'main_menu' => $this->buildMainMenuReply(
+                    $conversationService,
+                    $conversationSession,
+                    $sessionResult['user_id'],
+                    $menuBuilder
+                ),
                 'start_income_flow' => $this->startTransactionFlow(
                     $transactionFlowService,
                     $conversationSession,
@@ -451,6 +456,17 @@ class ProcessTelegramMessageJob implements ShouldQueue
         ], $userId, $rememberPrevious);
 
         return $menuBuilder->buildTransactionsMenu($queryResult);
+    }
+
+    private function buildMainMenuReply(
+        TelegramConversationService $conversationService,
+        $conversationSession,
+        int $userId,
+        TelegramMenuBuilder $menuBuilder
+    ): string {
+        $conversationService->goToMainMenu($conversationSession, $userId);
+
+        return $menuBuilder->buildMainMenu();
     }
 
     private function startTransactionFlow(

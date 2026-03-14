@@ -333,6 +333,7 @@ class TelegramTransactionFlowService
         }
 
         $draft = $this->sanitizeDraftForCreation($session->context(ConversationSession::CONTEXT_DRAFT, []));
+        $flow = $session->context(ConversationSession::CONTEXT_FLOW, 'expense');
 
         try {
             $result = $this->transactionCreationService->create($userId, $draft);
@@ -354,7 +355,7 @@ class TelegramTransactionFlowService
             'status' => 'created',
             'message' => $this->replyBuilder->buildCreatedSuccess($result),
             'result' => $result,
-            'flow' => $session->context(ConversationSession::CONTEXT_FLOW, 'expense'),
+            'flow' => $flow,
         ];
     }
 
