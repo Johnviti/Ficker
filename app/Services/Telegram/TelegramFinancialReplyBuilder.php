@@ -11,21 +11,23 @@ class TelegramFinancialReplyBuilder
                 'Seu acesso no Telegram expirou por inatividade.',
                 'Gere um novo codigo no Ficker para reconectar sua conta.',
                 '',
-                'Depois disso, voce pode pedir:',
+                'Menu principal:',
                 '0 - ajuda',
-                '1 - saldo',
-                '2 - fatura',
-                '3 - ultimas transacoes',
+                '1 - resumo de cartoes',
+                '2 - faturas',
+                '3 - transacoes',
+                '4 - saldo geral',
             ]),
             'revoked', 'not_linked' => implode("\n", [
                 'Seu Telegram ainda nao esta conectado ao Ficker.',
                 'Gere um codigo no app e envie aqui para vincular sua conta.',
                 '',
-                'Depois disso, voce pode pedir:',
+                'Menu principal:',
                 '0 - ajuda',
-                '1 - saldo',
-                '2 - fatura',
-                '3 - ultimas transacoes',
+                '1 - resumo de cartoes',
+                '2 - faturas',
+                '3 - transacoes',
+                '4 - saldo geral',
             ]),
             default => implode("\n", [
                 'Nao consegui validar sua sessao no Telegram agora.',
@@ -38,10 +40,8 @@ class TelegramFinancialReplyBuilder
     public function buildIntentReply(array $intent, array $data = []): string
     {
         return match ($intent['intent'] ?? 'unknown') {
-            'help' => $this->buildHelpReply(),
+            'help', 'main_menu' => $this->buildHelpReply(),
             'get_balance' => $this->buildBalanceReply($data),
-            'get_next_invoice' => $this->buildNextInvoiceReply($data),
-            'get_last_transactions' => $this->buildLastTransactionsReply($data),
             default => $this->buildUnknownReply(),
         };
     }
@@ -54,11 +54,12 @@ class TelegramFinancialReplyBuilder
     private function buildHelpReply(): string
     {
         return implode("\n", [
-            'Voce pode pedir:',
+            'Menu principal:',
             '0 - ajuda',
-            '1 - saldo',
-            '2 - fatura',
-            '3 - ultimas transacoes',
+            '1 - resumo de cartoes',
+            '2 - faturas',
+            '3 - transacoes',
+            '4 - saldo geral',
         ]);
     }
 
@@ -71,49 +72,16 @@ class TelegramFinancialReplyBuilder
         ]);
     }
 
-    private function buildNextInvoiceReply(array $data): string
-    {
-        if (($data['has_open_invoice'] ?? false) !== true) {
-            return 'Voce nao possui fatura em aberto no momento.';
-        }
-
-        return implode("\n", [
-            'Proxima fatura: ' . $this->money($data['total'] ?? 0),
-            'Cartao: ' . ($data['card_description'] ?? 'Nao identificado'),
-            'Vencimento: ' . $this->formatDate($data['pay_day'] ?? null),
-        ]);
-    }
-
-    private function buildLastTransactionsReply(array $data): string
-    {
-        $transactions = $data['transactions'] ?? [];
-
-        if ($transactions === []) {
-            return 'Nao encontrei transacoes recentes para sua conta.';
-        }
-
-        $lines = ['Ultimas transacoes:'];
-
-        foreach ($transactions as $index => $transaction) {
-            $sign = ((int) ($transaction['type_id'] ?? 2) === 1) ? '+' : '-';
-            $lines[] = ($index + 1) . '. '
-                . ($transaction['description'] ?? 'Sem descricao')
-                . ' - ' . $sign . $this->money($transaction['value'] ?? 0)
-                . ' - ' . $this->formatDate($transaction['date'] ?? null);
-        }
-
-        return implode("\n", $lines);
-    }
-
     private function buildUnknownReply(): string
     {
         return implode("\n", [
             'Nao entendi o que voce quer consultar.',
-            'Tente uma destas opcoes:',
+            'Use uma das opcoes do menu:',
             '0 - ajuda',
-            '1 - saldo',
-            '2 - fatura',
-            '3 - ultimas transacoes',
+            '1 - resumo de cartoes',
+            '2 - faturas',
+            '3 - transacoes',
+            '4 - saldo geral',
         ]);
     }
 

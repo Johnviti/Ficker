@@ -10,7 +10,7 @@ class TelegramAuditService
     {
         $action = $intent['intent'] ?? null;
 
-        if (!in_array($action, ['get_balance', 'get_next_invoice', 'get_last_transactions'], true)) {
+        if (!in_array($action, ['get_balance', 'cards_summary', 'invoices_menu', 'transactions_menu', 'transactions_next_page', 'transactions_previous_page'], true)) {
             return;
         }
 

@@ -5,10 +5,12 @@ namespace App\Jobs;
 use App\Models\TelegramWebhookEvent;
 use App\Services\Telegram\AccountLinkService;
 use App\Services\Telegram\TelegramAuditService;
-use App\Services\Telegram\TelegramFinancialQueryService;
+use App\Services\Telegram\TelegramConversationQueryService;
+use App\Services\Telegram\TelegramConversationService;
 use App\Services\Telegram\TelegramFinancialReplyBuilder;
 use App\Services\Telegram\TelegramIntentResolver;
 use App\Services\Telegram\TelegramLinkReplyBuilder;
+use App\Services\Telegram\TelegramMenuBuilder;
 use App\Services\Telegram\TelegramMessageNormalizer;
 use App\Services\Telegram\TelegramRateLimitService;
 use App\Services\Telegram\TelegramSessionService;
@@ -33,9 +35,11 @@ class ProcessTelegramMessageJob implements ShouldQueue
         AccountLinkService $accountLinkService,
         TelegramLinkReplyBuilder $replyBuilder,
         TelegramSessionService $sessionService,
+        TelegramConversationService $conversationService,
         TelegramIntentResolver $intentResolver,
-        TelegramFinancialQueryService $financialQueryService,
+        TelegramConversationQueryService $conversationQueryService,
         TelegramFinancialReplyBuilder $financialReplyBuilder,
+        TelegramMenuBuilder $menuBuilder,
         TelegramRateLimitService $rateLimitService,
         TelegramAuditService $auditService,
         TelegramSender $telegramSender
@@ -149,7 +153,17 @@ class ProcessTelegramMessageJob implements ShouldQueue
                 return;
             }
 
-            $intent = $intentResolver->resolve((string) ($normalizedPayload['text'] ?? ''));
+            $conversationSession = $conversationService->resolveSession($normalizedPayload, $sessionResult['user_id']);
+            $normalizedPayload['conversation'] = [
+                'conversation_session_id' => $conversationSession->id,
+                'state' => $conversationSession->state,
+                'context' => $conversationSession->context_json ?? [],
+            ];
+
+            $intent = $intentResolver->resolve(
+                (string) ($normalizedPayload['text'] ?? ''),
+                $conversationSession->state
+            );
             $normalizedPayload['intent'] = $intent;
             Log::info('telegram_intent_resolved', [
                 'event_id' => $event->id,
@@ -161,16 +175,28 @@ class ProcessTelegramMessageJob implements ShouldQueue
                 'intent' => $intent['intent'] ?? null,
             ]);
 
-            $queryResult = match ($intent['intent']) {
-                'help', 'unknown' => [],
-                'get_balance' => $financialQueryService->getBalance($sessionResult['user_id']),
-                'get_next_invoice' => $financialQueryService->getNextInvoice($sessionResult['user_id']),
-                'get_last_transactions' => $financialQueryService->getLastTransactions($sessionResult['user_id']),
+            $intentName = $intent['intent'] ?? 'unknown';
+            $queryResult = match ($intentName) {
+                'help', 'main_menu', 'go_back', 'unknown' => [],
+                'get_balance' => $conversationQueryService->getBalance($sessionResult['user_id']),
+                'cards_summary' => $conversationQueryService->getCardsSummary($sessionResult['user_id']),
+                'invoices_menu' => $conversationQueryService->getInvoicesSummary($sessionResult['user_id']),
+                'transactions_menu' => $conversationQueryService->getTransactionsPage($sessionResult['user_id'], 1, 5),
+                'transactions_next_page' => $conversationQueryService->getTransactionsPage(
+                    $sessionResult['user_id'],
+                    ((int) $conversationSession->context('page', 1)) + 1,
+                    (int) $conversationSession->context('per_page', 5)
+                ),
+                'transactions_previous_page' => $conversationQueryService->getTransactionsPage(
+                    $sessionResult['user_id'],
+                    max(((int) $conversationSession->context('page', 1)) - 1, 1),
+                    (int) $conversationSession->context('per_page', 5)
+                ),
                 default => [],
             };
 
             $normalizedPayload['query_result'] = $queryResult;
-            if (in_array($intent['intent'], ['get_balance', 'get_next_invoice', 'get_last_transactions'], true)) {
+            if (in_array($intentName, ['get_balance', 'cards_summary', 'invoices_menu', 'transactions_menu', 'transactions_next_page', 'transactions_previous_page'], true)) {
                 Log::info('telegram_financial_query_executed', [
                     'event_id' => $event->id,
                     'update_id' => $normalizedPayload['update_id'] ?? null,
@@ -178,24 +204,77 @@ class ProcessTelegramMessageJob implements ShouldQueue
                     'telegram_user_id' => $normalizedPayload['telegram_user_id'] ?? null,
                     'telegram_account_id' => $sessionResult['telegram_account_id'] ?? null,
                     'user_id' => $sessionResult['user_id'] ?? null,
-                    'intent' => $intent['intent'] ?? null,
+                    'intent' => $intentName,
                 ]);
             }
 
+            $message = match ($intentName) {
+                'help', 'main_menu' => $menuBuilder->buildMainMenu(),
+                'go_back' => $this->buildBackReply(
+                    $conversationService,
+                    $conversationSession,
+                    $sessionResult['user_id'],
+                    $menuBuilder
+                ),
+                'cards_summary' => $this->buildCardsSummaryReply(
+                    $conversationService,
+                    $conversationSession,
+                    $sessionResult['user_id'],
+                    $menuBuilder,
+                    $queryResult
+                ),
+                'invoices_menu' => $this->buildInvoicesReply(
+                    $conversationService,
+                    $conversationSession,
+                    $sessionResult['user_id'],
+                    $menuBuilder,
+                    $queryResult
+                ),
+                'transactions_menu' => $this->buildTransactionsReply(
+                    $conversationService,
+                    $conversationSession,
+                    $sessionResult['user_id'],
+                    $menuBuilder,
+                    $queryResult,
+                    1
+                ),
+                'transactions_next_page', 'transactions_previous_page' => $this->buildTransactionsReply(
+                    $conversationService,
+                    $conversationSession,
+                    $sessionResult['user_id'],
+                    $menuBuilder,
+                    $queryResult,
+                    (int) ($queryResult['page'] ?? 1),
+                    false
+                ),
+                'get_balance' => $financialReplyBuilder->buildIntentReply($intent, $queryResult),
+                default => $menuBuilder->buildUnknownForState($conversationSession->state ?: 'main_menu'),
+            };
+
             $normalizedPayload['reply'] = $this->replyToTelegram(
                 $telegramSender,
-                $financialReplyBuilder->buildIntentReply($intent, $queryResult),
+                $message,
                 $normalizedPayload['telegram_chat_id'] ?? null
             );
 
-            if (in_array($intent['intent'], ['help', 'get_balance', 'get_next_invoice', 'get_last_transactions'], true)) {
+            if (in_array($intentName, [
+                'help',
+                'main_menu',
+                'go_back',
+                'cards_summary',
+                'invoices_menu',
+                'transactions_menu',
+                'transactions_next_page',
+                'transactions_previous_page',
+                'get_balance',
+            ], true)) {
                 $sessionService->refreshSession($sessionResult['account']);
                 $normalizedPayload['session']['status'] = 'active';
                 $normalizedPayload['session']['session_refreshed'] = true;
             }
 
             $auditService->logIntent($normalizedPayload, $sessionResult, $intent, $normalizedPayload['reply']);
-            if (in_array($intent['intent'], ['get_balance', 'get_next_invoice', 'get_last_transactions'], true)) {
+            if (in_array($intentName, ['get_balance', 'cards_summary', 'invoices_menu', 'transactions_menu', 'transactions_next_page', 'transactions_previous_page'], true)) {
                 Log::info('telegram_audit_logged', [
                     'event_id' => $event->id,
                     'update_id' => $normalizedPayload['update_id'] ?? null,
@@ -203,7 +282,7 @@ class ProcessTelegramMessageJob implements ShouldQueue
                     'telegram_user_id' => $normalizedPayload['telegram_user_id'] ?? null,
                     'telegram_account_id' => $sessionResult['telegram_account_id'] ?? null,
                     'user_id' => $sessionResult['user_id'] ?? null,
-                    'intent' => $intent['intent'] ?? null,
+                    'intent' => $intentName,
                 ]);
             }
 
@@ -251,5 +330,60 @@ class ProcessTelegramMessageJob implements ShouldQueue
         unset($data['link_code'], $data['account']);
 
         return $data;
+    }
+
+    private function buildBackReply(
+        TelegramConversationService $conversationService,
+        $conversationSession,
+        int $userId,
+        TelegramMenuBuilder $menuBuilder
+    ): string {
+        $updatedSession = $conversationService->goBack($conversationSession, $userId);
+
+        return match ($updatedSession->state) {
+            'cards_summary', 'invoices_menu', 'transactions_page' => $menuBuilder->buildMainMenu(),
+            default => $menuBuilder->buildMainMenu(),
+        };
+    }
+
+    private function buildCardsSummaryReply(
+        TelegramConversationService $conversationService,
+        $conversationSession,
+        int $userId,
+        TelegramMenuBuilder $menuBuilder,
+        array $queryResult
+    ): string {
+        $conversationService->goToState($conversationSession, 'cards_summary', [], $userId);
+
+        return $menuBuilder->buildCardsSummaryMenu($queryResult);
+    }
+
+    private function buildInvoicesReply(
+        TelegramConversationService $conversationService,
+        $conversationSession,
+        int $userId,
+        TelegramMenuBuilder $menuBuilder,
+        array $queryResult
+    ): string {
+        $conversationService->goToState($conversationSession, 'invoices_menu', [], $userId);
+
+        return $menuBuilder->buildInvoicesMenu($queryResult);
+    }
+
+    private function buildTransactionsReply(
+        TelegramConversationService $conversationService,
+        $conversationSession,
+        int $userId,
+        TelegramMenuBuilder $menuBuilder,
+        array $queryResult,
+        int $page,
+        bool $rememberPrevious = true
+    ): string {
+        $conversationService->goToState($conversationSession, 'transactions_page', [
+            'page' => $page,
+            'per_page' => (int) ($queryResult['per_page'] ?? 5),
+        ], $userId, $rememberPrevious);
+
+        return $menuBuilder->buildTransactionsMenu($queryResult);
     }
 }

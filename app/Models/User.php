@@ -83,6 +83,11 @@ class User extends Authenticatable
         return $this->hasMany(AuditAccessLog::class);
     }
 
+    public function conversationSessions(): HasMany
+    {
+        return $this->hasMany(ConversationSession::class);
+    }
+
     public function level(): BelongsTo
     {
         return $this->belongsTo(Level::class);
