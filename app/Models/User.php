@@ -78,6 +78,11 @@ class User extends Authenticatable
         return $this->hasMany(TelegramLinkCode::class);
     }
 
+    public function auditAccessLogs(): HasMany
+    {
+        return $this->hasMany(AuditAccessLog::class);
+    }
+
     public function level(): BelongsTo
     {
         return $this->belongsTo(Level::class);

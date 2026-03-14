@@ -38,6 +38,8 @@ return [
         'timezone' => env('TELEGRAM_TIMEZONE', 'America/Sao_Paulo'),
         'link_code_ttl_minutes' => (int) env('TELEGRAM_LINK_CODE_TTL_MINUTES', 10),
         'session_ttl_hours' => (int) env('TELEGRAM_SESSION_TTL_HOURS', 72),
+        'rate_limit_max_hits' => (int) env('TELEGRAM_RATE_LIMIT_MAX_HITS', 15),
+        'rate_limit_window_seconds' => (int) env('TELEGRAM_RATE_LIMIT_WINDOW_SECONDS', 60),
     ],
 
 ];

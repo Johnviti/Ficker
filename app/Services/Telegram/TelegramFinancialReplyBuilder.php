@@ -46,6 +46,11 @@ class TelegramFinancialReplyBuilder
         };
     }
 
+    public function buildRateLimitReply(): string
+    {
+        return 'Voce enviou muitas mensagens em pouco tempo. Aguarde um instante e tente novamente.';
+    }
+
     private function buildHelpReply(): string
     {
         return implode("\n", [

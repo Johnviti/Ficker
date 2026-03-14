@@ -1,0 +1,36 @@
+<?php
+
+namespace App\Services\Telegram;
+
+use App\Models\AuditAccessLog;
+
+class TelegramAuditService
+{
+    public function logIntent(array $normalizedPayload, array $sessionResult, array $intent, array $reply): void
+    {
+        $action = $intent['intent'] ?? null;
+
+        if (!in_array($action, ['get_balance', 'get_next_invoice', 'get_last_transactions'], true)) {
+            return;
+        }
+
+        $userId = $sessionResult['user_id'] ?? null;
+
+        if (is_null($userId)) {
+            return;
+        }
+
+        AuditAccessLog::create([
+            'user_id' => $userId,
+            'channel' => 'telegram',
+            'action' => $action,
+            'metadata_json' => [
+                'update_id' => $normalizedPayload['update_id'] ?? null,
+                'telegram_chat_id' => $normalizedPayload['telegram_chat_id'] ?? null,
+                'telegram_user_id' => $normalizedPayload['telegram_user_id'] ?? null,
+                'telegram_account_id' => $sessionResult['telegram_account_id'] ?? null,
+                'reply_success' => $reply['success'] ?? false,
+            ],
+        ]);
+    }
+}
