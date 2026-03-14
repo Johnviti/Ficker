@@ -474,7 +474,7 @@ class TelegramTransactionFlowService
 
     private function sanitizeDraftForCreation(array $draft): array
     {
-        return [
+        return array_filter([
             'transaction_description' => $draft['transaction_description'] ?? null,
             'category_id' => $draft['category_id'] ?? null,
             'category_description' => $draft['category_description'] ?? null,
@@ -484,6 +484,6 @@ class TelegramTransactionFlowService
             'payment_method_id' => $draft['payment_method_id'] ?? null,
             'installments' => $draft['installments'] ?? null,
             'card_id' => $draft['card_id'] ?? null,
-        ];
+        ], static fn ($value) => !is_null($value));
     }
 }
