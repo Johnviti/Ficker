@@ -4,41 +4,31 @@ namespace App\Http\Controllers;
 
 use App\Models\Category;
 use App\Models\Transaction;
+use App\Services\Categories\CategoryCreationService;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Validation\ValidationException;
 
 class CategoryController extends Controller
 {
+    public function __construct(
+        private readonly CategoryCreationService $categoryCreationService
+    ) {
+    }
+
     public function store(Request $request): JsonResponse
     {
-        $request->validate([
-            'category_description' => ['required', 'string', 'min:2', 'max:50'],
-            'type_id' => ['required', 'integer', 'in:1,2,3'],
-        ], [
-            'category_description.required' => 'Informe a descricao da categoria.',
-            'category_description.string' => 'A descricao da categoria deve ser um texto.',
-            'category_description.min' => 'A descricao da categoria deve ter pelo menos 2 caracteres.',
-            'category_description.max' => 'A descricao da categoria deve ter no maximo 50 caracteres.',
-            'type_id.required' => 'Informe o tipo da categoria.',
-            'type_id.integer' => 'O tipo da categoria deve ser numerico.',
-            'type_id.in' => 'O tipo da categoria deve ser 1, 2 ou 3.',
-        ]);
-
         try {
-            $category = Category::create([
-                'user_id' => Auth::id(),
-                'category_description' => $request->category_description,
-                'type_id' => $request->type_id
-            ]);
-
-            LevelController::completeMission(5);
+            $result = $this->categoryCreationService->create(Auth::id(), $request->all());
 
             return response()->json([
                 'data' => [
-                    'category' => $category
+                    'category' => $result['category']
                 ]
             ], 201);
+        } catch (ValidationException $e) {
+            return $this->errorResponse('Os dados informados sao invalidos.', 422, $e->errors());
         } catch (\Exception $e) {
             return $this->errorResponse('A categoria nao foi criada.', 500);
         }

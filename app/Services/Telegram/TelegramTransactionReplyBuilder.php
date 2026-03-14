@@ -159,13 +159,14 @@ class TelegramTransactionReplyBuilder
         return implode("\n", [
             'Fluxo cancelado.',
             '',
-            '0 - ajuda',
+            '0 - menu principal',
             '1 - resumo de cartoes',
             '2 - faturas',
             '3 - transacoes',
             '4 - saldo geral',
             '5 - nova entrada',
             '6 - nova saida',
+            '8 - nova categoria',
         ]);
     }
 
@@ -186,7 +187,7 @@ class TelegramTransactionReplyBuilder
         }
 
         $lines[] = '';
-        $lines[] = '0 - ajuda';
+        $lines[] = '0 - menu principal';
 
         return implode("\n", $lines);
     }

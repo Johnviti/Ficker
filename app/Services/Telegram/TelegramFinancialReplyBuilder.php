@@ -12,31 +12,33 @@ class TelegramFinancialReplyBuilder
                 'Gere um novo codigo no Ficker para reconectar sua conta.',
                 '',
                 'Menu principal:',
-                '0 - ajuda',
+                '0 - menu principal',
                 '1 - resumo de cartoes',
                 '2 - faturas',
                 '3 - transacoes',
                 '4 - saldo geral',
                 '5 - nova entrada',
                 '6 - nova saida',
+                '8 - nova categoria',
             ]),
             'revoked', 'not_linked' => implode("\n", [
                 'Seu Telegram ainda nao esta conectado ao Ficker.',
                 'Gere um codigo no app e envie aqui para vincular sua conta.',
                 '',
                 'Menu principal:',
-                '0 - ajuda',
+                '0 - menu principal',
                 '1 - resumo de cartoes',
                 '2 - faturas',
                 '3 - transacoes',
                 '4 - saldo geral',
                 '5 - nova entrada',
                 '6 - nova saida',
+                '8 - nova categoria',
             ]),
             default => implode("\n", [
                 'Nao consegui validar sua sessao no Telegram agora.',
                 'Tente novamente em instantes ou use:',
-                '0 - ajuda',
+                '0 - menu principal',
             ]),
         };
     }
@@ -59,13 +61,14 @@ class TelegramFinancialReplyBuilder
     {
         return implode("\n", [
             'Menu principal:',
-            '0 - ajuda',
+            '0 - menu principal',
             '1 - resumo de cartoes',
             '2 - faturas',
             '3 - transacoes',
             '4 - saldo geral',
             '5 - nova entrada',
             '6 - nova saida',
+            '8 - nova categoria',
         ]);
     }
 
@@ -83,13 +86,14 @@ class TelegramFinancialReplyBuilder
         return implode("\n", [
             'Nao entendi o que voce quer consultar.',
             'Use uma das opcoes do menu:',
-            '0 - ajuda',
+            '0 - menu principal',
             '1 - resumo de cartoes',
             '2 - faturas',
             '3 - transacoes',
             '4 - saldo geral',
             '5 - nova entrada',
             '6 - nova saida',
+            '8 - nova categoria',
         ]);
     }
 

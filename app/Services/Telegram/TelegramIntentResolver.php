@@ -10,9 +10,16 @@ class TelegramIntentResolver
     {
         $normalizedText = $this->normalize($text);
 
-        if (in_array($normalizedText, ['/start', 'ajuda', 'menu', '0'], true)) {
+        if (in_array($normalizedText, ['/start', 'menu', '0'], true)) {
             return [
                 'intent' => 'main_menu',
+                'text' => $normalizedText,
+            ];
+        }
+
+        if ($normalizedText === 'ajuda') {
+            return [
+                'intent' => 'context_help',
                 'text' => $normalizedText,
             ];
         }
@@ -65,8 +72,8 @@ class TelegramIntentResolver
                 'intent' => 'start_expense_flow',
                 'text' => $normalizedText,
             ],
-            in_array($normalizedText, ['ajuda'], true) => [
-                'intent' => 'help',
+            in_array($normalizedText, ['8', 'nova categoria', 'categoria'], true) => [
+                'intent' => 'start_category_flow',
                 'text' => $normalizedText,
             ],
             default => [

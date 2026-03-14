@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Models\TelegramWebhookEvent;
 use App\Services\Telegram\AccountLinkService;
 use App\Services\Telegram\TelegramAuditService;
+use App\Services\Telegram\TelegramCategoryFlowService;
 use App\Services\Telegram\TelegramConversationQueryService;
 use App\Services\Telegram\TelegramConversationService;
 use App\Services\Telegram\TelegramFinancialReplyBuilder;
@@ -38,6 +39,7 @@ class ProcessTelegramMessageJob implements ShouldQueue
         TelegramSessionService $sessionService,
         TelegramConversationService $conversationService,
         TelegramIntentResolver $intentResolver,
+        TelegramCategoryFlowService $categoryFlowService,
         TelegramConversationQueryService $conversationQueryService,
         TelegramFinancialReplyBuilder $financialReplyBuilder,
         TelegramMenuBuilder $menuBuilder,
@@ -162,6 +164,39 @@ class ProcessTelegramMessageJob implements ShouldQueue
                 'context' => $conversationSession->context_json ?? [],
             ];
 
+            if ($categoryFlowService->isWizardState($conversationSession->state)) {
+                $flowResult = $categoryFlowService->handleInput(
+                    $conversationSession,
+                    $sessionResult['user_id'],
+                    (string) ($normalizedPayload['text'] ?? '')
+                );
+
+                $normalizedPayload['category_flow'] = $this->toLoggableArray($flowResult);
+                $normalizedPayload['reply'] = $this->replyToTelegram(
+                    $telegramSender,
+                    $flowResult['message'],
+                    $normalizedPayload['telegram_chat_id'] ?? null
+                );
+
+                $sessionService->refreshSession($sessionResult['account']);
+                $normalizedPayload['session']['status'] = 'active';
+                $normalizedPayload['session']['session_refreshed'] = true;
+
+                if (($flowResult['status'] ?? null) === 'created') {
+                    $auditService->logAction($normalizedPayload, $sessionResult, 'create_category_confirmed', $normalizedPayload['reply'], [
+                        'category_id' => $flowResult['result']['category']->id ?? null,
+                        'type_id' => $flowResult['result']['category']->type_id ?? null,
+                    ]);
+                }
+
+                if (($flowResult['status'] ?? null) === 'cancelled') {
+                    $auditService->logAction($normalizedPayload, $sessionResult, 'create_category_cancelled', $normalizedPayload['reply']);
+                }
+
+                $event->markAsProcessed($normalizedPayload);
+                return;
+            }
+
             if ($transactionFlowService->isWizardState($conversationSession->state)) {
                 $flowResult = $transactionFlowService->handleInput(
                     $conversationSession,
@@ -218,7 +253,7 @@ class ProcessTelegramMessageJob implements ShouldQueue
 
             $intentName = $intent['intent'] ?? 'unknown';
             $queryResult = match ($intentName) {
-                'help', 'main_menu', 'go_back', 'unknown' => [],
+                'help', 'main_menu', 'context_help', 'go_back', 'unknown', 'start_category_flow', 'start_income_flow', 'start_expense_flow' => [],
                 'get_balance' => $conversationQueryService->getBalance($sessionResult['user_id']),
                 'cards_summary' => $conversationQueryService->getCardsSummary($sessionResult['user_id']),
                 'invoices_menu' => $conversationQueryService->getInvoicesSummary($sessionResult['user_id']),
@@ -256,6 +291,7 @@ class ProcessTelegramMessageJob implements ShouldQueue
                     $sessionResult['user_id'],
                     $menuBuilder
                 ),
+                'context_help' => $menuBuilder->buildContextHelp($conversationSession->state ?: 'main_menu'),
                 'start_income_flow' => $this->startTransactionFlow(
                     $transactionFlowService,
                     $conversationSession,
@@ -271,6 +307,13 @@ class ProcessTelegramMessageJob implements ShouldQueue
                     $normalizedPayload,
                     $auditService,
                     'expense'
+                ),
+                'start_category_flow' => $this->startCategoryFlow(
+                    $categoryFlowService,
+                    $conversationSession,
+                    $sessionResult,
+                    $normalizedPayload,
+                    $auditService
                 ),
                 'go_back' => $this->buildBackReply(
                     $conversationService,
@@ -322,6 +365,7 @@ class ProcessTelegramMessageJob implements ShouldQueue
             if (in_array($intentName, [
                 'help',
                 'main_menu',
+                'context_help',
                 'go_back',
                 'cards_summary',
                 'invoices_menu',
@@ -331,6 +375,7 @@ class ProcessTelegramMessageJob implements ShouldQueue
                 'get_balance',
                 'start_income_flow',
                 'start_expense_flow',
+                'start_category_flow',
             ], true)) {
                 $sessionService->refreshSession($sessionResult['account']);
                 $normalizedPayload['session']['status'] = 'active';
@@ -489,6 +534,27 @@ class ProcessTelegramMessageJob implements ShouldQueue
             $flow === 'income' ? 'create_income_started' : 'create_expense_started',
             ['success' => true],
             ['flow' => $flow]
+        );
+
+        return $result['message'];
+    }
+
+    private function startCategoryFlow(
+        TelegramCategoryFlowService $categoryFlowService,
+        $conversationSession,
+        array $sessionResult,
+        array &$normalizedPayload,
+        TelegramAuditService $auditService
+    ): string {
+        $result = $categoryFlowService->start($conversationSession, $sessionResult['user_id']);
+
+        $normalizedPayload['category_flow'] = $this->toLoggableArray($result);
+
+        $auditService->logAction(
+            $normalizedPayload,
+            $sessionResult,
+            'create_category_started',
+            ['success' => true]
         );
 
         return $result['message'];

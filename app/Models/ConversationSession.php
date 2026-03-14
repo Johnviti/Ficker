@@ -27,6 +27,9 @@ class ConversationSession extends Model
     public const STATE_TRANSACTION_EXPENSE_CARD = 'transaction_expense_card';
     public const STATE_TRANSACTION_EXPENSE_INSTALLMENTS = 'transaction_expense_installments';
     public const STATE_TRANSACTION_EXPENSE_CONFIRM = 'transaction_expense_confirm';
+    public const STATE_CATEGORY_CREATE_TYPE = 'category_create_type';
+    public const STATE_CATEGORY_CREATE_DESCRIPTION = 'category_create_description';
+    public const STATE_CATEGORY_CREATE_CONFIRM = 'category_create_confirm';
     public const CONTEXT_PREVIOUS_STATE = 'previous_state';
     public const CONTEXT_PAGE = 'page';
     public const CONTEXT_PER_PAGE = 'per_page';

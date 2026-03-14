@@ -10,14 +10,42 @@ class TelegramMenuBuilder
     {
         return implode("\n", [
             'Menu principal:',
-            '0 - ajuda',
+            '0 - menu principal',
             '1 - resumo de cartoes',
             '2 - faturas',
             '3 - transacoes',
             '4 - saldo geral',
             '5 - nova entrada',
             '6 - nova saida',
+            '8 - nova categoria',
         ]);
+    }
+
+    public function buildContextHelp(string $state): string
+    {
+        return match ($state) {
+            ConversationSession::STATE_CARDS_SUMMARY => implode("\n", [
+                'Voce esta no resumo de cartoes.',
+                'Use:',
+                '7 - voltar',
+                '0 - menu principal',
+            ]),
+            ConversationSession::STATE_INVOICES_MENU => implode("\n", [
+                'Voce esta no submenu de faturas.',
+                'Use:',
+                '7 - voltar',
+                '0 - menu principal',
+            ]),
+            ConversationSession::STATE_TRANSACTIONS_PAGE => implode("\n", [
+                'Voce esta no submenu de transacoes.',
+                'Use:',
+                '5 - anteriores',
+                '6 - proximas',
+                '7 - voltar',
+                '0 - menu principal',
+            ]),
+            default => $this->buildMainMenu(),
+        };
     }
 
     public function buildCardsSummaryMenu(array $data): string
