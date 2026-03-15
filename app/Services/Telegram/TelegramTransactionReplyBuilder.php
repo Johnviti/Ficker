@@ -80,8 +80,13 @@ class TelegramTransactionReplyBuilder
         return implode("\n", $lines);
     }
 
-    public function buildCardPrompt(array $cards): string
+    public function buildCardPrompt(array $cardsPage): string
     {
+        $cards = $cardsPage['options'] ?? [];
+        $page = (int) ($cardsPage['page'] ?? 1);
+        $hasPrevious = (bool) ($cardsPage['has_previous'] ?? false);
+        $hasMore = (bool) ($cardsPage['has_more'] ?? false);
+
         if ($cards === []) {
             return implode("\n", [
                 'Nao encontrei cartoes cadastrados para sua conta.',
@@ -92,13 +97,22 @@ class TelegramTransactionReplyBuilder
             ]);
         }
 
-        $lines = ['Escolha o cartao:'];
+        $lines = ['Escolha o cartao - pagina ' . $page . ':'];
 
         foreach ($cards as $option => $card) {
             $lines[] = $option . ' - ' . ($card['description'] ?? 'Cartao');
         }
 
         $lines[] = '';
+
+        if ($hasPrevious) {
+            $lines[] = '5 - anteriores';
+        }
+
+        if ($hasMore) {
+            $lines[] = '6 - proximos';
+        }
+
         $lines[] = '7 - voltar';
         $lines[] = '0 - cancelar';
 

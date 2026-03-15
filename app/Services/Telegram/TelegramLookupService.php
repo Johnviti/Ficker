@@ -62,4 +62,34 @@ class TelegramLookupService
                 ];
             })->all();
     }
+
+    public function getCardsPage(int $userId, int $page = 1, int $perPage = 4): array
+    {
+        $cards = Card::query()
+            ->where('user_id', $userId)
+            ->orderBy('card_description')
+            ->get();
+
+        $total = $cards->count();
+        $page = max($page, 1);
+        $offset = ($page - 1) * $perPage;
+        $pageCards = $cards->slice($offset, $perPage)->values();
+
+        return [
+            'page' => $page,
+            'per_page' => $perPage,
+            'has_previous' => $page > 1,
+            'has_more' => ($offset + $perPage) < $total,
+            'options' => $pageCards->mapWithKeys(function (Card $card, int $index) {
+                $option = (string) ($index + 1);
+
+                return [
+                    $option => [
+                        'id' => $card->id,
+                        'description' => $card->card_description,
+                    ],
+                ];
+            })->all(),
+        ];
+    }
 }

@@ -262,7 +262,7 @@ class TelegramTransactionFlowService
             ];
         }
 
-        $cards = $this->lookupService->getCards($userId);
+        $cards = $this->lookupService->getCardsPage($userId, 1, 4);
         $this->transition($session, ConversationSession::STATE_TRANSACTION_EXPENSE_CARD, [
             'payment_method_id' => $selected['id'],
             'resolved_payment_method_description' => $selected['description'],
@@ -277,7 +277,37 @@ class TelegramTransactionFlowService
 
     private function handleCardStep(ConversationSession $session, int $userId, string $text): array
     {
-        $options = $session->context(ConversationSession::CONTEXT_DRAFT . '.card_options', []);
+        $cardsPage = $session->context(ConversationSession::CONTEXT_DRAFT . '.card_options', []);
+        $options = $cardsPage['options'] ?? [];
+        $page = (int) ($cardsPage['page'] ?? 1);
+        $perPage = (int) ($cardsPage['per_page'] ?? 4);
+
+        if ($text === '5') {
+            $previousPage = max($page - 1, 1);
+            $updatedCardsPage = $this->lookupService->getCardsPage($userId, $previousPage, $perPage);
+            $context = $session->context_json ?? [];
+            $context[ConversationSession::CONTEXT_DRAFT]['card_options'] = $updatedCardsPage;
+            $this->updateSession($session, ConversationSession::STATE_TRANSACTION_EXPENSE_CARD, $context, $userId);
+
+            return [
+                'status' => 'in_progress',
+                'message' => $this->replyBuilder->buildCardPrompt($updatedCardsPage),
+            ];
+        }
+
+        if ($text === '6') {
+            $nextPage = $page + 1;
+            $updatedCardsPage = $this->lookupService->getCardsPage($userId, $nextPage, $perPage);
+            $context = $session->context_json ?? [];
+            $context[ConversationSession::CONTEXT_DRAFT]['card_options'] = $updatedCardsPage;
+            $this->updateSession($session, ConversationSession::STATE_TRANSACTION_EXPENSE_CARD, $context, $userId);
+
+            return [
+                'status' => 'in_progress',
+                'message' => $this->replyBuilder->buildCardPrompt($updatedCardsPage),
+            ];
+        }
+
         $selected = $options[$text] ?? null;
 
         if (is_null($selected)) {
@@ -399,7 +429,7 @@ class TelegramTransactionFlowService
                 $session->context(ConversationSession::CONTEXT_DRAFT . '.payment_method_options', $this->lookupService->getExpensePaymentMethods())
             ),
             ConversationSession::STATE_TRANSACTION_EXPENSE_CARD => $this->replyBuilder->buildCardPrompt(
-                $session->context(ConversationSession::CONTEXT_DRAFT . '.card_options', $this->lookupService->getCards($userId))
+                $session->context(ConversationSession::CONTEXT_DRAFT . '.card_options', $this->lookupService->getCardsPage($userId, 1, 4))
             ),
             ConversationSession::STATE_TRANSACTION_EXPENSE_INSTALLMENTS => $this->replyBuilder->buildInstallmentsPrompt(),
             ConversationSession::STATE_TRANSACTION_INCOME_CONFIRM,
