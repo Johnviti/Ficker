@@ -13,7 +13,6 @@ class TelegramFinancialReplyBuilder
                 '',
                 'Menu principal:',
                 '0 - menu principal',
-                'ajuda - ver opcoes',
                 '1 - resumo de cartoes',
                 '2 - faturas',
                 '3 - transacoes',
@@ -28,7 +27,6 @@ class TelegramFinancialReplyBuilder
                 '',
                 'Menu principal:',
                 '0 - menu principal',
-                'ajuda - ver opcoes',
                 '1 - resumo de cartoes',
                 '2 - faturas',
                 '3 - transacoes',
@@ -40,7 +38,6 @@ class TelegramFinancialReplyBuilder
             default => implode("\n", [
                 'Nao consegui validar sua sessao no Telegram agora.',
                 'Tente novamente em instantes ou use:',
-                'ajuda - ver opcoes',
                 '0 - menu principal',
             ]),
         };
@@ -65,7 +62,6 @@ class TelegramFinancialReplyBuilder
         return implode("\n", [
             'Menu principal:',
             '0 - menu principal',
-            'ajuda - ver opcoes',
             '1 - resumo de cartoes',
             '2 - faturas',
             '3 - transacoes',
@@ -83,7 +79,6 @@ class TelegramFinancialReplyBuilder
             'Gasto real no mes: ' . $this->money($data['real_spending'] ?? 0),
             'Gasto planejado: ' . $this->money($data['planned_spending'] ?? 0),
             '',
-            'ajuda - ver opcoes',
             '0 - menu principal',
         ]);
     }
@@ -93,7 +88,6 @@ class TelegramFinancialReplyBuilder
         return implode("\n", [
             'Nao entendi o que voce quer consultar.',
             'Use uma das opcoes do menu:',
-            'ajuda - ver opcoes',
             '0 - menu principal',
             '1 - resumo de cartoes',
             '2 - faturas',

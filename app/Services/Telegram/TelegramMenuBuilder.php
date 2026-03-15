@@ -11,7 +11,6 @@ class TelegramMenuBuilder
         return implode("\n", [
             'Menu principal:',
             '0 - menu principal',
-            'ajuda - ver opcoes',
             '1 - resumo de cartoes',
             '2 - faturas',
             '3 - transacoes',
@@ -28,21 +27,18 @@ class TelegramMenuBuilder
             ConversationSession::STATE_CARDS_SUMMARY => implode("\n", [
                 'Voce esta em Resumo de cartoes.',
                 'Use:',
-                'ajuda - ver opcoes desta etapa',
                 '7 - voltar',
                 '0 - menu principal',
             ]),
             ConversationSession::STATE_INVOICES_MENU => implode("\n", [
                 'Voce esta em Faturas.',
                 'Use:',
-                'ajuda - ver opcoes desta etapa',
                 '7 - voltar',
                 '0 - menu principal',
             ]),
             ConversationSession::STATE_TRANSACTIONS_PAGE => implode("\n", [
                 'Voce esta em Transacoes.',
                 'Use:',
-                'ajuda - ver opcoes desta etapa',
                 '5 - anteriores',
                 '6 - proximas',
                 '7 - voltar',
@@ -60,16 +56,12 @@ class TelegramMenuBuilder
             return implode("\n", [
                 'Voce ainda nao possui cartoes cadastrados.',
                 '',
-                'ajuda - ver opcoes desta etapa',
                 '7 - voltar',
                 '0 - menu principal',
             ]);
         }
 
-        $lines = [
-            'Resumo dos cartoes:',
-            'ajuda - ver opcoes desta etapa',
-        ];
+        $lines = ['Resumo dos cartoes:'];
 
         foreach ($cards as $card) {
             $lines[] = '- ' . ($card['card_description'] ?? 'Cartao sem nome');
@@ -79,7 +71,6 @@ class TelegramMenuBuilder
         }
 
         $lines[] = '';
-        $lines[] = 'ajuda - ver opcoes desta etapa';
         $lines[] = '7 - voltar';
         $lines[] = '0 - menu principal';
 
@@ -94,16 +85,12 @@ class TelegramMenuBuilder
             return implode("\n", [
                 'Voce ainda nao possui cartoes cadastrados.',
                 '',
-                'ajuda - ver opcoes desta etapa',
                 '7 - voltar',
                 '0 - menu principal',
             ]);
         }
 
-        $lines = [
-            'Faturas dos cartoes:',
-            'ajuda - ver opcoes desta etapa',
-        ];
+        $lines = ['Faturas dos cartoes:'];
 
         foreach ($cards as $card) {
             $lines[] = '- ' . ($card['card_description'] ?? 'Cartao sem nome');
@@ -115,7 +102,6 @@ class TelegramMenuBuilder
         }
 
         $lines[] = '';
-        $lines[] = 'ajuda - ver opcoes desta etapa';
         $lines[] = '7 - voltar';
         $lines[] = '0 - menu principal';
 
@@ -133,16 +119,12 @@ class TelegramMenuBuilder
             return implode("\n", [
                 'Nao encontrei transacoes para exibir.',
                 '',
-                'ajuda - ver opcoes desta etapa',
                 '7 - voltar',
                 '0 - menu principal',
             ]);
         }
 
-        $lines = [
-            'Transacoes - pagina ' . $page . ':',
-            'ajuda - ver opcoes desta etapa',
-        ];
+        $lines = ['Transacoes - pagina ' . $page . ':'];
 
         foreach ($transactions as $index => $transaction) {
             $sign = ((int) ($transaction['type_id'] ?? 2) === 1) ? '+' : '-';
@@ -153,7 +135,6 @@ class TelegramMenuBuilder
         }
 
         $lines[] = '';
-        $lines[] = 'ajuda - ver opcoes desta etapa';
 
         if ($hasPrevious) {
             $lines[] = '5 - anteriores';
@@ -175,13 +156,11 @@ class TelegramMenuBuilder
             ConversationSession::STATE_CARDS_SUMMARY,
             ConversationSession::STATE_INVOICES_MENU => implode("\n", [
                 'Opcao invalida para este submenu.',
-                'ajuda - ver opcoes desta etapa',
                 '7 - voltar',
                 '0 - menu principal',
             ]),
             ConversationSession::STATE_TRANSACTIONS_PAGE => implode("\n", [
                 'Opcao invalida para este submenu.',
-                'ajuda - ver opcoes desta etapa',
                 '5 - anteriores',
                 '6 - proximas',
                 '7 - voltar',

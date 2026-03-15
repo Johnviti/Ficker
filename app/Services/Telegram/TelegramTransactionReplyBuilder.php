@@ -11,7 +11,6 @@ class TelegramTransactionReplyBuilder
             'Digite o valor usando apenas numeros.',
             'Exemplo: 125.90',
             '',
-            'ajuda - ver opcoes desta etapa',
             '7 - voltar',
             '0 - cancelar',
         ]);
@@ -23,7 +22,6 @@ class TelegramTransactionReplyBuilder
             'Digite uma descricao curta para a transacao.',
             'Exemplo: Mercado do mes',
             '',
-            'ajuda - ver opcoes desta etapa',
             '7 - voltar',
             '0 - cancelar',
         ]);
@@ -36,7 +34,6 @@ class TelegramTransactionReplyBuilder
                 'Nao encontrei categorias disponiveis para este tipo.',
                 'Crie uma categoria no app e tente novamente.',
                 '',
-                'ajuda - ver opcoes desta etapa',
                 '7 - voltar',
                 '0 - cancelar',
             ]);
@@ -51,7 +48,6 @@ class TelegramTransactionReplyBuilder
         }
 
         $lines[] = '';
-        $lines[] = 'ajuda - ver opcoes desta etapa';
         $lines[] = '7 - voltar';
         $lines[] = '0 - cancelar';
 
@@ -64,7 +60,6 @@ class TelegramTransactionReplyBuilder
             'Digite a data no formato DD/MM/AAAA.',
             'Exemplo: 14/03/2026',
             '',
-            'ajuda - ver opcoes desta etapa',
             '7 - voltar',
             '0 - cancelar',
         ]);
@@ -79,7 +74,6 @@ class TelegramTransactionReplyBuilder
         }
 
         $lines[] = '';
-        $lines[] = 'ajuda - ver opcoes desta etapa';
         $lines[] = '7 - voltar';
         $lines[] = '0 - cancelar';
 
@@ -93,7 +87,6 @@ class TelegramTransactionReplyBuilder
                 'Nao encontrei cartoes cadastrados para sua conta.',
                 'Cadastre um cartao no app ou escolha outra forma de pagamento.',
                 '',
-                'ajuda - ver opcoes desta etapa',
                 '7 - voltar',
                 '0 - cancelar',
             ]);
@@ -106,7 +99,6 @@ class TelegramTransactionReplyBuilder
         }
 
         $lines[] = '';
-        $lines[] = 'ajuda - ver opcoes desta etapa';
         $lines[] = '7 - voltar';
         $lines[] = '0 - cancelar';
 
@@ -119,7 +111,6 @@ class TelegramTransactionReplyBuilder
             'Digite o numero de parcelas.',
             'Exemplo: 3',
             '',
-            'ajuda - ver opcoes desta etapa',
             '7 - voltar',
             '0 - cancelar',
         ]);
@@ -148,7 +139,6 @@ class TelegramTransactionReplyBuilder
         $lines[] = '';
         $lines[] = '1 - confirmar';
         $lines[] = '2 - cancelar';
-        $lines[] = 'ajuda - ver opcoes desta etapa';
         $lines[] = '7 - voltar';
         $lines[] = '0 - cancelar';
 
@@ -169,7 +159,6 @@ class TelegramTransactionReplyBuilder
         return implode("\n", [
             'Fluxo cancelado.',
             '',
-            'ajuda - ver opcoes',
             '0 - menu principal',
             '1 - resumo de cartoes',
             '2 - faturas',
@@ -198,7 +187,6 @@ class TelegramTransactionReplyBuilder
         }
 
         $lines[] = '';
-        $lines[] = 'ajuda - ver opcoes';
         $lines[] = '0 - menu principal';
 
         return implode("\n", $lines);

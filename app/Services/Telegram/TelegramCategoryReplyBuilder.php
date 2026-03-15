@@ -12,7 +12,6 @@ class TelegramCategoryReplyBuilder
             '1 - categoria de entrada',
             '2 - categoria de saida',
             '',
-            'ajuda - ver opcoes desta etapa',
             '7 - voltar',
             '0 - cancelar',
         ]);
@@ -24,7 +23,6 @@ class TelegramCategoryReplyBuilder
             'Digite a descricao da categoria.',
             'Exemplo: Saude',
             '',
-            'ajuda - ver opcoes desta etapa',
             '7 - voltar',
             '0 - cancelar',
         ]);
@@ -39,7 +37,6 @@ class TelegramCategoryReplyBuilder
             '',
             '1 - confirmar',
             '2 - cancelar',
-            'ajuda - ver opcoes desta etapa',
             '7 - voltar',
             '0 - cancelar',
         ]);
@@ -61,7 +58,6 @@ class TelegramCategoryReplyBuilder
             'Descricao: ' . ($result['category']->category_description ?? '-'),
             'Tipo: ' . $this->typeLabel((int) ($result['category']->type_id ?? 0)),
             '',
-            'ajuda - ver opcoes',
             '0 - menu principal',
         ]);
     }
@@ -71,7 +67,6 @@ class TelegramCategoryReplyBuilder
         return implode("\n", [
             'Criacao de categoria cancelada.',
             '',
-            'ajuda - ver opcoes',
             '0 - menu principal',
         ]);
     }
