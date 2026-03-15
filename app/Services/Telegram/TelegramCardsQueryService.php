@@ -152,12 +152,14 @@ class TelegramCardsQueryService
         $page = max($page, 1);
         $offset = ($page - 1) * $perPage;
         $items = $installments->slice($offset, $perPage)->values();
+        $invoiceTotal = (float) $installments->sum('installment_value');
 
         return [
             'card_id' => $card->id,
             'card_description' => $card->card_description,
             'pay_day' => $invoicePayDay,
             'closure_date' => $this->invoiceClosureDate($card, $invoicePayDay)?->toDateString(),
+            'invoice_total' => $invoiceTotal,
             'page' => $page,
             'per_page' => $perPage,
             'has_previous' => $page > 1,

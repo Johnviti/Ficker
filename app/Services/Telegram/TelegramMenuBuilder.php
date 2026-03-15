@@ -147,7 +147,8 @@ class TelegramMenuBuilder
 
         $lines = [
             'Cartao: ' . ($data['card_description'] ?? 'Cartao'),
-            'Fatura atual - pagina ' . $page,
+            'Fatura atual: ' . $this->money($data['invoice_total'] ?? 0),
+            'Pagina ' . $page,
             'Fechamento: ' . $this->formatDate($data['closure_date'] ?? null),
             'Vencimento: ' . $this->formatDate($data['pay_day'] ?? null),
         ];
