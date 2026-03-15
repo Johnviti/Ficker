@@ -12,6 +12,7 @@ class ConversationSession extends Model
 
     public const STATE_MAIN_MENU = 'main_menu';
     public const STATE_CARDS_SUMMARY = 'cards_summary';
+    public const STATE_CARD_INVOICE_ITEMS = 'card_invoice_items';
     public const STATE_INVOICES_MENU = 'invoices_menu';
     public const STATE_TRANSACTIONS_PAGE = 'transactions_page';
     public const STATE_TRANSACTION_INCOME_VALUE = 'transaction_income_value';
@@ -33,6 +34,9 @@ class ConversationSession extends Model
     public const CONTEXT_PREVIOUS_STATE = 'previous_state';
     public const CONTEXT_PAGE = 'page';
     public const CONTEXT_PER_PAGE = 'per_page';
+    public const CONTEXT_CARD_OPTIONS = 'card_options';
+    public const CONTEXT_SELECTED_CARD_ID = 'selected_card_id';
+    public const CONTEXT_SELECTED_CARD_DESCRIPTION = 'selected_card_description';
     public const CONTEXT_FLOW = 'flow';
     public const CONTEXT_DRAFT = 'draft';
     public const CONTEXT_STEP_HISTORY = 'step_history';

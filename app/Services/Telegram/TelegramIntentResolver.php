@@ -47,13 +47,33 @@ class TelegramIntentResolver
             }
         }
 
-        return match (true) {
-            in_array($normalizedText, ['1', 'cartoes', 'resumo de cartoes'], true) => [
-                'intent' => 'cards_summary',
+        if ($state === ConversationSession::STATE_CARD_INVOICE_ITEMS) {
+            if ($normalizedText === '5') {
+                return [
+                    'intent' => 'card_invoice_items_previous_page',
+                    'text' => $normalizedText,
+                ];
+            }
+
+            if ($normalizedText === '6') {
+                return [
+                    'intent' => 'card_invoice_items_next_page',
+                    'text' => $normalizedText,
+                ];
+            }
+        }
+
+        if ($state === ConversationSession::STATE_CARDS_SUMMARY && ctype_digit($normalizedText) && !in_array($normalizedText, ['0', '7'], true)) {
+            return [
+                'intent' => 'select_card_invoice_items',
                 'text' => $normalizedText,
-            ],
-            in_array($normalizedText, ['2', 'fatura', 'faturas', 'proxima fatura'], true) => [
-                'intent' => 'invoices_menu',
+                'selected_option' => (int) $normalizedText,
+            ];
+        }
+
+        return match (true) {
+            in_array($normalizedText, ['1', 'cartoes', 'resumo de cartoes', 'fatura', 'faturas', 'proxima fatura'], true) => [
+                'intent' => 'cards_summary',
                 'text' => $normalizedText,
             ],
             in_array($normalizedText, ['3', 'transacoes', 'ultimas transacoes', 'ultimas 5', 'ultimas 5 transacoes'], true) => [

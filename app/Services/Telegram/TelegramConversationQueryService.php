@@ -21,6 +21,11 @@ class TelegramConversationQueryService
         return $this->cardsQueryService->getInvoicesSummary($userId);
     }
 
+    public function getCardInvoiceItems(int $userId, int $cardId, int $page = 1, int $perPage = 5): array
+    {
+        return $this->cardsQueryService->getCardInvoiceItems($userId, $cardId, $page, $perPage);
+    }
+
     public function getTransactionsPage(int $userId, int $page = 1, int $perPage = 5): array
     {
         return $this->transactionsPaginationService->getPage($userId, $page, $perPage);
