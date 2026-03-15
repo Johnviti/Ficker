@@ -37,6 +37,7 @@ class ConversationSession extends Model
     public const CONTEXT_CARD_OPTIONS = 'card_options';
     public const CONTEXT_SELECTED_CARD_ID = 'selected_card_id';
     public const CONTEXT_SELECTED_CARD_DESCRIPTION = 'selected_card_description';
+    public const CONTEXT_PARENT_PAGE = 'parent_page';
     public const CONTEXT_FLOW = 'flow';
     public const CONTEXT_DRAFT = 'draft';
     public const CONTEXT_STEP_HISTORY = 'step_history';

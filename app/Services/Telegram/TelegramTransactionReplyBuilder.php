@@ -161,11 +161,11 @@ class TelegramTransactionReplyBuilder
             '',
             '0 - menu principal',
             '1 - cartoes',
-            '3 - transacoes',
-            '4 - saldo geral',
-            '5 - nova entrada',
-            '6 - nova saida',
-            '8 - nova categoria',
+            '2 - transacoes',
+            '3 - saldo geral',
+            '4 - nova entrada',
+            '5 - nova saida',
+            '6 - nova categoria',
         ]);
     }
 

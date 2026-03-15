@@ -12,11 +12,11 @@ class TelegramMenuBuilder
             'Menu principal:',
             '0 - menu principal',
             '1 - cartoes',
-            '3 - transacoes',
-            '4 - saldo geral',
-            '5 - nova entrada',
-            '6 - nova saida',
-            '8 - nova categoria',
+            '2 - transacoes',
+            '3 - saldo geral',
+            '4 - nova entrada',
+            '5 - nova saida',
+            '6 - nova categoria',
         ]);
     }
 
@@ -26,7 +26,9 @@ class TelegramMenuBuilder
             ConversationSession::STATE_CARDS_SUMMARY => implode("\n", [
                 'Voce esta em Cartoes.',
                 'Use:',
-                'Escolha o numero de um cartao para ver os itens da fatura atual.',
+                '1 a 4 - escolher cartao desta pagina',
+                '5 - anteriores',
+                '6 - proximos',
                 '7 - voltar',
                 '0 - menu principal',
             ]),
@@ -53,6 +55,9 @@ class TelegramMenuBuilder
     public function buildCardsSummaryMenu(array $data): string
     {
         $cards = $data['cards'] ?? [];
+        $page = (int) ($data['page'] ?? 1);
+        $hasPrevious = (bool) ($data['has_previous'] ?? false);
+        $hasMore = (bool) ($data['has_more'] ?? false);
 
         if ($cards === []) {
             return implode("\n", [
@@ -63,7 +68,7 @@ class TelegramMenuBuilder
             ]);
         }
 
-        $lines = ['Cartoes:'];
+        $lines = ['Cartoes - pagina ' . $page . ':'];
 
         foreach ($cards as $index => $card) {
             $lines[] = ($index + 1) . ' - ' . ($card['card_description'] ?? 'Cartao sem nome');
@@ -76,7 +81,16 @@ class TelegramMenuBuilder
         }
 
         $lines[] = '';
-        $lines[] = 'Escolha o numero de um cartao para ver os itens da fatura atual.';
+
+        if ($hasPrevious) {
+            $lines[] = '5 - anteriores';
+        }
+
+        if ($hasMore) {
+            $lines[] = '6 - proximos';
+        }
+
+        $lines[] = 'Escolha 1 a 4 para ver os itens da fatura atual.';
         $lines[] = '7 - voltar';
         $lines[] = '0 - menu principal';
 
@@ -210,7 +224,9 @@ class TelegramMenuBuilder
         return match ($state) {
             ConversationSession::STATE_CARDS_SUMMARY => implode("\n", [
                 'Opcao invalida para este submenu.',
-                'Escolha o numero de um cartao, ou use:',
+                'Escolha 1 a 4 para abrir um cartao, ou use:',
+                '5 - anteriores',
+                '6 - proximos',
                 '7 - voltar',
                 '0 - menu principal',
             ]),

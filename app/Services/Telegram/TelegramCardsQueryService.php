@@ -9,14 +9,23 @@ use Illuminate\Support\Carbon;
 
 class TelegramCardsQueryService
 {
-    public function getCardsSummary(int $userId): array
+    public function getCardsSummary(int $userId, int $page = 1, int $perPage = 4): array
     {
         $cards = Card::where('user_id', $userId)
             ->orderBy('card_description')
             ->get();
 
+        $total = $cards->count();
+        $page = max($page, 1);
+        $offset = ($page - 1) * $perPage;
+        $pageCards = $cards->slice($offset, $perPage)->values();
+
         return [
-            'cards' => $cards->map(function (Card $card) {
+            'page' => $page,
+            'per_page' => $perPage,
+            'has_previous' => $page > 1,
+            'has_more' => ($offset + $perPage) < $total,
+            'cards' => $pageCards->map(function (Card $card) {
                 $nextInstallment = Installment::query()
                     ->where('card_id', $card->id)
                     ->whereNull('paid_at')

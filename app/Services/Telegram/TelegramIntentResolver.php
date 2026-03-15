@@ -47,6 +47,22 @@ class TelegramIntentResolver
             }
         }
 
+        if ($state === ConversationSession::STATE_CARDS_SUMMARY) {
+            if ($normalizedText === '5') {
+                return [
+                    'intent' => 'cards_summary_previous_page',
+                    'text' => $normalizedText,
+                ];
+            }
+
+            if ($normalizedText === '6') {
+                return [
+                    'intent' => 'cards_summary_next_page',
+                    'text' => $normalizedText,
+                ];
+            }
+        }
+
         if ($state === ConversationSession::STATE_CARD_INVOICE_ITEMS) {
             if ($normalizedText === '5') {
                 return [
@@ -63,7 +79,7 @@ class TelegramIntentResolver
             }
         }
 
-        if ($state === ConversationSession::STATE_CARDS_SUMMARY && ctype_digit($normalizedText) && !in_array($normalizedText, ['0', '7'], true)) {
+        if ($state === ConversationSession::STATE_CARDS_SUMMARY && in_array($normalizedText, ['1', '2', '3', '4'], true)) {
             return [
                 'intent' => 'select_card_invoice_items',
                 'text' => $normalizedText,
@@ -76,23 +92,23 @@ class TelegramIntentResolver
                 'intent' => 'cards_summary',
                 'text' => $normalizedText,
             ],
-            in_array($normalizedText, ['3', 'transacoes', 'ultimas transacoes', 'ultimas 5', 'ultimas 5 transacoes'], true) => [
+            in_array($normalizedText, ['2', 'transacoes', 'ultimas transacoes', 'ultimas 5', 'ultimas 5 transacoes'], true) => [
                 'intent' => 'transactions_menu',
                 'text' => $normalizedText,
             ],
-            in_array($normalizedText, ['4', 'saldo', 'meu saldo'], true) => [
+            in_array($normalizedText, ['3', 'saldo', 'meu saldo'], true) => [
                 'intent' => 'get_balance',
                 'text' => $normalizedText,
             ],
-            in_array($normalizedText, ['5', 'nova entrada', 'entrada'], true) => [
+            in_array($normalizedText, ['4', 'nova entrada', 'entrada'], true) => [
                 'intent' => 'start_income_flow',
                 'text' => $normalizedText,
             ],
-            in_array($normalizedText, ['6', 'nova saida', 'saida'], true) => [
+            in_array($normalizedText, ['5', 'nova saida', 'saida'], true) => [
                 'intent' => 'start_expense_flow',
                 'text' => $normalizedText,
             ],
-            in_array($normalizedText, ['8', 'nova categoria', 'categoria'], true) => [
+            in_array($normalizedText, ['6', 'nova categoria', 'categoria'], true) => [
                 'intent' => 'start_category_flow',
                 'text' => $normalizedText,
             ],

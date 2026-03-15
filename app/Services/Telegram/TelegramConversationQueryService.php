@@ -11,9 +11,9 @@ class TelegramConversationQueryService
     ) {
     }
 
-    public function getCardsSummary(int $userId): array
+    public function getCardsSummary(int $userId, int $page = 1, int $perPage = 4): array
     {
-        return $this->cardsQueryService->getCardsSummary($userId);
+        return $this->cardsQueryService->getCardsSummary($userId, $page, $perPage);
     }
 
     public function getInvoicesSummary(int $userId): array
