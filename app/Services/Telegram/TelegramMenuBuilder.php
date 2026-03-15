@@ -35,10 +35,31 @@ class TelegramMenuBuilder
             ConversationSession::STATE_CARD_INVOICE_ITEMS => implode("\n", [
                 'Voce esta nos itens da fatura atual do cartao selecionado.',
                 'Use:',
+                '2 - pagar fatura deste cartao',
                 '5 - anteriores',
                 '6 - proximas',
                 '7 - voltar',
                 '0 - menu principal',
+            ]),
+            ConversationSession::STATE_CARD_INVOICE_PAYMENT_METHOD => implode("\n", [
+                'Voce esta pagando a fatura do cartao selecionado.',
+                'Escolha uma forma de pagamento listada ou use:',
+                '7 - voltar',
+                '0 - cancelar',
+            ]),
+            ConversationSession::STATE_CARD_INVOICE_PAYMENT_CATEGORY => implode("\n", [
+                'Voce esta escolhendo a categoria do pagamento da fatura.',
+                'Escolha uma categoria listada ou use:',
+                '7 - voltar',
+                '0 - cancelar',
+            ]),
+            ConversationSession::STATE_CARD_INVOICE_PAYMENT_CONFIRM => implode("\n", [
+                'Voce esta confirmando o pagamento da fatura.',
+                'Use:',
+                '1 - confirmar',
+                '2 - cancelar',
+                '7 - voltar',
+                '0 - cancelar',
             ]),
             ConversationSession::STATE_TRANSACTIONS_PAGE => implode("\n", [
                 'Voce esta em Transacoes.',
@@ -134,15 +155,29 @@ class TelegramMenuBuilder
         $page = (int) ($data['page'] ?? 1);
         $hasPrevious = (bool) ($data['has_previous'] ?? false);
         $hasMore = (bool) ($data['has_more'] ?? false);
+        $canShowPaymentAction = !is_null($data['pay_day'] ?? null) && (float) ($data['invoice_total'] ?? 0) > 0;
 
         if ($items === []) {
-            return implode("\n", [
+            $lines = [
                 'Nao encontrei itens em aberto para a fatura atual deste cartao.',
                 'Cartao: ' . ($data['card_description'] ?? 'Cartao'),
-                '',
-                '7 - voltar',
-                '0 - menu principal',
-            ]);
+            ];
+
+            if ($canShowPaymentAction) {
+                $lines[] = 'Fatura atual: ' . $this->money($data['invoice_total'] ?? 0);
+                $lines[] = 'Vencimento: ' . $this->formatDate($data['pay_day'] ?? null);
+            }
+
+            $lines[] = '';
+
+            if ($canShowPaymentAction) {
+                $lines[] = '2 - pagar fatura deste cartao';
+            }
+
+            $lines[] = '7 - voltar';
+            $lines[] = '0 - menu principal';
+
+            return implode("\n", $lines);
         }
 
         $lines = [
@@ -170,6 +205,10 @@ class TelegramMenuBuilder
 
         if ($hasMore) {
             $lines[] = '6 - proximas';
+        }
+
+        if ($canShowPaymentAction) {
+            $lines[] = '2 - pagar fatura deste cartao';
         }
 
         $lines[] = '7 - voltar';
@@ -233,10 +272,30 @@ class TelegramMenuBuilder
             ]),
             ConversationSession::STATE_CARD_INVOICE_ITEMS => implode("\n", [
                 'Opcao invalida para este submenu.',
+                '2 - pagar fatura deste cartao',
                 '5 - anteriores',
                 '6 - proximas',
                 '7 - voltar',
                 '0 - menu principal',
+            ]),
+            ConversationSession::STATE_CARD_INVOICE_PAYMENT_METHOD => implode("\n", [
+                'Opcao invalida para este passo.',
+                'Escolha uma forma de pagamento listada ou use:',
+                '7 - voltar',
+                '0 - cancelar',
+            ]),
+            ConversationSession::STATE_CARD_INVOICE_PAYMENT_CATEGORY => implode("\n", [
+                'Opcao invalida para este passo.',
+                'Escolha uma categoria listada ou use:',
+                '7 - voltar',
+                '0 - cancelar',
+            ]),
+            ConversationSession::STATE_CARD_INVOICE_PAYMENT_CONFIRM => implode("\n", [
+                'Opcao invalida para este passo.',
+                '1 - confirmar',
+                '2 - cancelar',
+                '7 - voltar',
+                '0 - cancelar',
             ]),
             ConversationSession::STATE_TRANSACTIONS_PAGE => implode("\n", [
                 'Opcao invalida para este submenu.',

@@ -44,6 +44,59 @@ class TelegramLookupService
             })->all();
     }
 
+    public function getInvoicePaymentMethods(): array
+    {
+        return PaymentMethod::query()
+            ->where('id', '!=', 4)
+            ->orderBy('id')
+            ->get()
+            ->values()
+            ->mapWithKeys(function (PaymentMethod $paymentMethod) {
+                return [
+                    (string) $paymentMethod->id => [
+                        'id' => $paymentMethod->id,
+                        'description' => $paymentMethod->payment_method_description,
+                    ],
+                ];
+            })->all();
+    }
+
+    public function getInvoicePaymentCategoryOptions(int $userId): array
+    {
+        $options = [
+            '1' => [
+                'id' => null,
+                'description' => 'Pagamento de fatura',
+                'mode' => 'default',
+            ],
+        ];
+
+        $categories = Category::query()
+            ->where('user_id', $userId)
+            ->where('type_id', 2)
+            ->orderBy('category_description')
+            ->get()
+            ->values();
+
+        $optionNumber = 2;
+
+        foreach ($categories as $category) {
+            if ($category->category_description === 'Pagamento de fatura') {
+                continue;
+            }
+
+            $options[(string) $optionNumber] = [
+                'id' => $category->id,
+                'description' => $category->category_description,
+                'mode' => 'existing',
+            ];
+
+            $optionNumber++;
+        }
+
+        return $options;
+    }
+
     public function getCards(int $userId): array
     {
         return Card::query()

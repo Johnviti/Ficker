@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Exceptions\CardInvoicePaymentException;
 use App\Models\Card;
 use App\Models\Category;
 use App\Models\Flag;
 use App\Models\Installment;
 use App\Models\Transaction;
+use App\Services\Cards\CardInvoicePaymentService;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
@@ -17,6 +19,11 @@ use Illuminate\Validation\ValidationException;
 
 class CardController extends Controller
 {
+    public function __construct(
+        private readonly CardInvoicePaymentService $cardInvoicePaymentService
+    ) {
+    }
+
     private function nextInvoicePayDay(Card $card): ?string
     {
         return Installment::where('card_id', $card->id)
@@ -336,12 +343,21 @@ class CardController extends Controller
     public function payInvoiceByPayDay(Request $request, $id, $payDay): JsonResponse
     {
         try {
-            $card = Card::where('user_id', Auth::id())->findOrFail($id);
-            return $this->payInvoiceCore($request, $card, $payDay);
-        } catch (ModelNotFoundException $e) {
-            return $this->errorResponse('Cartao nao encontrado.', 404);
+            $result = $this->cardInvoicePaymentService->payInvoiceByPayDay(Auth::id(), (int) $id, (string) $payDay, $request->all());
+
+            return response()->json([
+                'data' => [
+                    'message' => 'Fatura paga com sucesso.',
+                    'card_id' => $result['card']->id,
+                    'pay_day' => $result['pay_day'],
+                    'invoice_value' => $result['invoice_value'],
+                    'payment_transaction' => $result['payment_transaction'],
+                ]
+            ], 200);
         } catch (ValidationException $e) {
             return $this->errorResponse($e->validator->errors()->first(), 422, $e->errors());
+        } catch (CardInvoicePaymentException $e) {
+            return $this->errorResponse($e->getMessage(), $e->status(), $e->errors());
         } catch (\Exception $e) {
             return $this->errorResponse('Erro ao pagar fatura.', 500);
         }
@@ -350,18 +366,21 @@ class CardController extends Controller
     public function payNextInvoice(Request $request, $id): JsonResponse
     {
         try {
-            $card = Card::where('user_id', Auth::id())->findOrFail($id);
-            $nextPayDay = $this->nextInvoicePayDay($card);
+            $result = $this->cardInvoicePaymentService->payNextInvoice(Auth::id(), (int) $id, $request->all());
 
-            if (!$nextPayDay) {
-                return $this->errorResponse('Nao ha fatura em aberto para este cartao.', 422);
-            }
-
-            return $this->payInvoiceCore($request, $card, $nextPayDay);
-        } catch (ModelNotFoundException $e) {
-            return $this->errorResponse('Cartao nao encontrado.', 404);
+            return response()->json([
+                'data' => [
+                    'message' => 'Fatura paga com sucesso.',
+                    'card_id' => $result['card']->id,
+                    'pay_day' => $result['pay_day'],
+                    'invoice_value' => $result['invoice_value'],
+                    'payment_transaction' => $result['payment_transaction'],
+                ]
+            ], 200);
         } catch (ValidationException $e) {
             return $this->errorResponse($e->validator->errors()->first(), 422, $e->errors());
+        } catch (CardInvoicePaymentException $e) {
+            return $this->errorResponse($e->getMessage(), $e->status(), $e->errors());
         } catch (\Exception $e) {
             return $this->errorResponse('Erro ao pagar fatura.', 500);
         }

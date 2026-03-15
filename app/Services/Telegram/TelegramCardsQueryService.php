@@ -153,13 +153,19 @@ class TelegramCardsQueryService
         $offset = ($page - 1) * $perPage;
         $items = $installments->slice($offset, $perPage)->values();
         $invoiceTotal = (float) $installments->sum('installment_value');
+        $closureDate = $this->invoiceClosureDate($card, $invoicePayDay)?->toDateString();
+        $canPayInvoice = !is_null($invoicePayDay)
+            && $invoiceTotal > 0
+            && !is_null($closureDate)
+            && Carbon::today()->startOfDay()->gte(Carbon::parse($closureDate)->startOfDay());
 
         return [
             'card_id' => $card->id,
             'card_description' => $card->card_description,
             'pay_day' => $invoicePayDay,
-            'closure_date' => $this->invoiceClosureDate($card, $invoicePayDay)?->toDateString(),
+            'closure_date' => $closureDate,
             'invoice_total' => $invoiceTotal,
+            'can_pay_invoice' => $canPayInvoice,
             'page' => $page,
             'per_page' => $perPage,
             'has_previous' => $page > 1,

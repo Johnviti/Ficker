@@ -64,6 +64,13 @@ class TelegramIntentResolver
         }
 
         if ($state === ConversationSession::STATE_CARD_INVOICE_ITEMS) {
+            if ($normalizedText === '2') {
+                return [
+                    'intent' => 'start_card_invoice_payment_flow',
+                    'text' => $normalizedText,
+                ];
+            }
+
             if ($normalizedText === '5') {
                 return [
                     'intent' => 'card_invoice_items_previous_page',
