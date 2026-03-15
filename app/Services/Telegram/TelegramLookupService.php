@@ -4,6 +4,7 @@ namespace App\Services\Telegram;
 
 use App\Models\Card;
 use App\Models\Category;
+use App\Models\Flag;
 use App\Models\PaymentMethod;
 
 class TelegramLookupService
@@ -144,5 +145,23 @@ class TelegramLookupService
                 ];
             })->all(),
         ];
+    }
+
+    public function getFlags(): array
+    {
+        return Flag::query()
+            ->orderBy('flag_description')
+            ->get()
+            ->values()
+            ->mapWithKeys(function (Flag $flag, int $index) {
+                $option = (string) ($index + 1);
+
+                return [
+                    $option => [
+                        'id' => $flag->id,
+                        'description' => $flag->flag_description,
+                    ],
+                ];
+            })->all();
     }
 }

@@ -48,6 +48,14 @@ class TelegramIntentResolver
         }
 
         if ($state === ConversationSession::STATE_CARDS_SUMMARY) {
+            if (in_array($normalizedText, ['1', '2', '3', '4'], true)) {
+                return [
+                    'intent' => 'select_card_details',
+                    'text' => $normalizedText,
+                    'selected_option' => (int) $normalizedText,
+                ];
+            }
+
             if ($normalizedText === '5') {
                 return [
                     'intent' => 'cards_summary_previous_page',
@@ -63,7 +71,7 @@ class TelegramIntentResolver
             }
         }
 
-        if ($state === ConversationSession::STATE_CARD_INVOICE_ITEMS) {
+        if ($state === ConversationSession::STATE_CARD_DETAILS) {
             if ($normalizedText === '2') {
                 return [
                     'intent' => 'start_card_invoice_payment_flow',
@@ -71,6 +79,39 @@ class TelegramIntentResolver
                 ];
             }
 
+            if ($normalizedText === '1') {
+                return [
+                    'intent' => 'card_invoices',
+                    'text' => $normalizedText,
+                ];
+            }
+        }
+
+        if ($state === ConversationSession::STATE_CARD_INVOICES) {
+            if (in_array($normalizedText, ['1', '2', '3', '4'], true)) {
+                return [
+                    'intent' => 'select_card_invoice_items',
+                    'text' => $normalizedText,
+                    'selected_option' => (int) $normalizedText,
+                ];
+            }
+
+            if ($normalizedText === '5') {
+                return [
+                    'intent' => 'card_invoices_previous_page',
+                    'text' => $normalizedText,
+                ];
+            }
+
+            if ($normalizedText === '6') {
+                return [
+                    'intent' => 'card_invoices_next_page',
+                    'text' => $normalizedText,
+                ];
+            }
+        }
+
+        if ($state === ConversationSession::STATE_CARD_INVOICE_ITEMS) {
             if ($normalizedText === '5') {
                 return [
                     'intent' => 'card_invoice_items_previous_page',
@@ -84,14 +125,6 @@ class TelegramIntentResolver
                     'text' => $normalizedText,
                 ];
             }
-        }
-
-        if ($state === ConversationSession::STATE_CARDS_SUMMARY && in_array($normalizedText, ['1', '2', '3', '4'], true)) {
-            return [
-                'intent' => 'select_card_invoice_items',
-                'text' => $normalizedText,
-                'selected_option' => (int) $normalizedText,
-            ];
         }
 
         return match (true) {
@@ -117,6 +150,10 @@ class TelegramIntentResolver
             ],
             in_array($normalizedText, ['6', 'nova categoria', 'categoria'], true) => [
                 'intent' => 'start_category_flow',
+                'text' => $normalizedText,
+            ],
+            in_array($normalizedText, ['7', 'novo cartao', 'cartao novo'], true) => [
+                'intent' => 'start_card_flow',
                 'text' => $normalizedText,
             ],
             default => [

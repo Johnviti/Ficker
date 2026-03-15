@@ -180,6 +180,7 @@ class TelegramTransactionReplyBuilder
             '4 - nova entrada',
             '5 - nova saida',
             '6 - nova categoria',
+            '7 - novo cartao',
         ]);
     }
 

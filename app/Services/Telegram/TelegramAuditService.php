@@ -10,7 +10,22 @@ class TelegramAuditService
     {
         $action = $intent['intent'] ?? null;
 
-        if (!in_array($action, ['get_balance', 'cards_summary', 'cards_summary_next_page', 'cards_summary_previous_page', 'select_card_invoice_items', 'card_invoice_items_next_page', 'card_invoice_items_previous_page', 'transactions_menu', 'transactions_next_page', 'transactions_previous_page'], true)) {
+        if (!in_array($action, [
+            'get_balance',
+            'cards_summary',
+            'cards_summary_next_page',
+            'cards_summary_previous_page',
+            'select_card_details',
+            'card_invoices',
+            'card_invoices_next_page',
+            'card_invoices_previous_page',
+            'select_card_invoice_items',
+            'card_invoice_items_next_page',
+            'card_invoice_items_previous_page',
+            'transactions_menu',
+            'transactions_next_page',
+            'transactions_previous_page',
+        ], true)) {
             return;
         }
 

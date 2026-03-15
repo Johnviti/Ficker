@@ -6,6 +6,7 @@ use App\Models\ConversationSession;
 use App\Models\TelegramWebhookEvent;
 use App\Services\Telegram\AccountLinkService;
 use App\Services\Telegram\TelegramAuditService;
+use App\Services\Telegram\TelegramCardFlowService;
 use App\Services\Telegram\TelegramCardInvoicePaymentFlowService;
 use App\Services\Telegram\TelegramCategoryFlowService;
 use App\Services\Telegram\TelegramConversationQueryService;
@@ -42,6 +43,7 @@ class ProcessTelegramMessageJob implements ShouldQueue
         TelegramConversationService $conversationService,
         TelegramIntentResolver $intentResolver,
         TelegramCategoryFlowService $categoryFlowService,
+        TelegramCardFlowService $cardFlowService,
         TelegramCardInvoicePaymentFlowService $cardInvoicePaymentFlowService,
         TelegramConversationQueryService $conversationQueryService,
         TelegramFinancialReplyBuilder $financialReplyBuilder,
@@ -239,6 +241,38 @@ class ProcessTelegramMessageJob implements ShouldQueue
                 return;
             }
 
+            if ($cardFlowService->isWizardState($conversationSession->state)) {
+                $flowResult = $cardFlowService->handleInput(
+                    $conversationSession,
+                    $sessionResult['user_id'],
+                    (string) ($normalizedPayload['text'] ?? '')
+                );
+
+                $normalizedPayload['card_flow'] = $this->toLoggableArray($flowResult);
+                $normalizedPayload['reply'] = $this->replyToTelegram(
+                    $telegramSender,
+                    $flowResult['message'],
+                    $normalizedPayload['telegram_chat_id'] ?? null
+                );
+
+                $sessionService->refreshSession($sessionResult['account']);
+                $normalizedPayload['session']['status'] = 'active';
+                $normalizedPayload['session']['session_refreshed'] = true;
+
+                if (($flowResult['status'] ?? null) === 'created') {
+                    $auditService->logAction($normalizedPayload, $sessionResult, 'create_card_confirmed', $normalizedPayload['reply'], [
+                        'card_id' => $flowResult['result']['card']->id ?? null,
+                    ]);
+                }
+
+                if (($flowResult['status'] ?? null) === 'cancelled') {
+                    $auditService->logAction($normalizedPayload, $sessionResult, 'create_card_cancelled', $normalizedPayload['reply']);
+                }
+
+                $event->markAsProcessed($normalizedPayload);
+                return;
+            }
+
             if ($cardInvoicePaymentFlowService->isWizardState($conversationSession->state)) {
                 $flowResult = $cardInvoicePaymentFlowService->handleInput(
                     $conversationSession,
@@ -292,7 +326,7 @@ class ProcessTelegramMessageJob implements ShouldQueue
 
             $intentName = $intent['intent'] ?? 'unknown';
             $queryResult = match ($intentName) {
-                'help', 'main_menu', 'context_help', 'go_back', 'unknown', 'start_category_flow', 'start_income_flow', 'start_expense_flow', 'start_card_invoice_payment_flow' => [],
+                'help', 'main_menu', 'context_help', 'go_back', 'unknown', 'start_category_flow', 'start_income_flow', 'start_expense_flow', 'start_card_invoice_payment_flow', 'start_card_flow' => [],
                 'get_balance' => $conversationQueryService->getBalance($sessionResult['user_id']),
                 'cards_summary' => $conversationQueryService->getCardsSummary($sessionResult['user_id'], 1, 4),
                 'cards_summary_next_page' => $conversationQueryService->getCardsSummary(
@@ -305,12 +339,39 @@ class ProcessTelegramMessageJob implements ShouldQueue
                     max(((int) $conversationSession->context('page', 1)) - 1, 1),
                     (int) $conversationSession->context('per_page', 4)
                 ),
-                'select_card_invoice_items' => $conversationQueryService->getCardInvoiceItems(
+                'select_card_details' => $conversationQueryService->getCardDetails(
                     $sessionResult['user_id'],
                     (int) data_get(
                         $conversationSession->context('card_options', []),
                         ($intent['selected_option'] ?? 0) . '.id',
                         0
+                    )
+                ),
+                'card_invoices' => $conversationQueryService->getCardInvoices(
+                    $sessionResult['user_id'],
+                    (int) $conversationSession->context('selected_card_id', 0),
+                    1,
+                    4
+                ),
+                'card_invoices_next_page' => $conversationQueryService->getCardInvoices(
+                    $sessionResult['user_id'],
+                    (int) $conversationSession->context('selected_card_id', 0),
+                    ((int) $conversationSession->context('page', 1)) + 1,
+                    (int) $conversationSession->context('per_page', 4)
+                ),
+                'card_invoices_previous_page' => $conversationQueryService->getCardInvoices(
+                    $sessionResult['user_id'],
+                    (int) $conversationSession->context('selected_card_id', 0),
+                    max(((int) $conversationSession->context('page', 1)) - 1, 1),
+                    (int) $conversationSession->context('per_page', 4)
+                ),
+                'select_card_invoice_items' => $conversationQueryService->getCardInvoiceItems(
+                    $sessionResult['user_id'],
+                    (int) $conversationSession->context('selected_card_id', 0),
+                    data_get(
+                        $conversationSession->context('invoice_options', []),
+                        ($intent['selected_option'] ?? 0) . '.pay_day',
+                        null
                     ),
                     1,
                     5
@@ -318,12 +379,14 @@ class ProcessTelegramMessageJob implements ShouldQueue
                 'card_invoice_items_next_page' => $conversationQueryService->getCardInvoiceItems(
                     $sessionResult['user_id'],
                     (int) $conversationSession->context('selected_card_id', 0),
+                    $conversationSession->context('selected_invoice_pay_day'),
                     ((int) $conversationSession->context('page', 1)) + 1,
                     (int) $conversationSession->context('per_page', 5)
                 ),
                 'card_invoice_items_previous_page' => $conversationQueryService->getCardInvoiceItems(
                     $sessionResult['user_id'],
                     (int) $conversationSession->context('selected_card_id', 0),
+                    $conversationSession->context('selected_invoice_pay_day'),
                     max(((int) $conversationSession->context('page', 1)) - 1, 1),
                     (int) $conversationSession->context('per_page', 5)
                 ),
@@ -342,7 +405,7 @@ class ProcessTelegramMessageJob implements ShouldQueue
             };
 
             $normalizedPayload['query_result'] = $queryResult;
-            if (in_array($intentName, ['get_balance', 'cards_summary', 'cards_summary_next_page', 'cards_summary_previous_page', 'select_card_invoice_items', 'card_invoice_items_next_page', 'card_invoice_items_previous_page', 'transactions_menu', 'transactions_next_page', 'transactions_previous_page'], true)) {
+            if (in_array($intentName, ['get_balance', 'cards_summary', 'cards_summary_next_page', 'cards_summary_previous_page', 'select_card_details', 'card_invoices', 'card_invoices_next_page', 'card_invoices_previous_page', 'select_card_invoice_items', 'card_invoice_items_next_page', 'card_invoice_items_previous_page', 'transactions_menu', 'transactions_next_page', 'transactions_previous_page'], true)) {
                 Log::info('telegram_financial_query_executed', [
                     'event_id' => $event->id,
                     'update_id' => $normalizedPayload['update_id'] ?? null,
@@ -385,6 +448,13 @@ class ProcessTelegramMessageJob implements ShouldQueue
                     $normalizedPayload,
                     $auditService
                 ),
+                'start_card_flow' => $this->startCardFlow(
+                    $cardFlowService,
+                    $conversationSession,
+                    $sessionResult,
+                    $normalizedPayload,
+                    $auditService
+                ),
                 'start_card_invoice_payment_flow' => $this->startCardInvoicePaymentFlow(
                     $cardInvoicePaymentFlowService,
                     $conversationSession,
@@ -412,6 +482,30 @@ class ProcessTelegramMessageJob implements ShouldQueue
                     $sessionResult['user_id'],
                     $menuBuilder,
                     $queryResult,
+                    false
+                ),
+                'select_card_details' => $this->buildCardDetailsReply(
+                    $conversationService,
+                    $conversationSession,
+                    $sessionResult['user_id'],
+                    $menuBuilder,
+                    $queryResult
+                ),
+                'card_invoices' => $this->buildCardInvoicesReply(
+                    $conversationService,
+                    $conversationSession,
+                    $sessionResult['user_id'],
+                    $menuBuilder,
+                    $queryResult,
+                    1
+                ),
+                'card_invoices_next_page', 'card_invoices_previous_page' => $this->buildCardInvoicesReply(
+                    $conversationService,
+                    $conversationSession,
+                    $sessionResult['user_id'],
+                    $menuBuilder,
+                    $queryResult,
+                    (int) ($queryResult['page'] ?? 1),
                     false
                 ),
                 'select_card_invoice_items' => $this->buildCardInvoiceItemsReply(
@@ -476,6 +570,7 @@ class ProcessTelegramMessageJob implements ShouldQueue
                 'start_income_flow',
                 'start_expense_flow',
                 'start_category_flow',
+                'start_card_flow',
                 'start_card_invoice_payment_flow',
             ], true)) {
                 $sessionService->refreshSession($sessionResult['account']);
@@ -484,7 +579,7 @@ class ProcessTelegramMessageJob implements ShouldQueue
             }
 
             $auditService->logIntent($normalizedPayload, $sessionResult, $intent, $normalizedPayload['reply']);
-            if (in_array($intentName, ['get_balance', 'cards_summary', 'cards_summary_next_page', 'cards_summary_previous_page', 'select_card_invoice_items', 'card_invoice_items_next_page', 'card_invoice_items_previous_page', 'transactions_menu', 'transactions_next_page', 'transactions_previous_page'], true)) {
+            if (in_array($intentName, ['get_balance', 'cards_summary', 'cards_summary_next_page', 'cards_summary_previous_page', 'select_card_details', 'card_invoices', 'card_invoices_next_page', 'card_invoices_previous_page', 'select_card_invoice_items', 'card_invoice_items_next_page', 'card_invoice_items_previous_page', 'transactions_menu', 'transactions_next_page', 'transactions_previous_page'], true)) {
                 Log::info('telegram_audit_logged', [
                     'event_id' => $event->id,
                     'update_id' => $normalizedPayload['update_id'] ?? null,
@@ -555,6 +650,12 @@ class ProcessTelegramMessageJob implements ShouldQueue
             ];
         }
 
+        if (isset($data['result']['card'])) {
+            $data['result'] = [
+                'card_id' => $data['result']['card']->id ?? null,
+            ];
+        }
+
         return $data;
     }
 
@@ -567,22 +668,63 @@ class ProcessTelegramMessageJob implements ShouldQueue
     ): string {
         $currentState = $conversationSession->state;
         $parentPage = (int) $conversationSession->context('parent_page', 1);
-        $updatedSession = $conversationService->goBack($conversationSession, $userId);
 
-        return match ($updatedSession->state) {
-            'cards_summary' => $this->buildCardsSummaryReply(
+        return match ($currentState) {
+            ConversationSession::STATE_CARDS_SUMMARY => $this->buildMainMenuReply(
                 $conversationService,
-                $updatedSession,
+                $conversationSession,
+                $userId,
+                $menuBuilder,
+            ),
+            ConversationSession::STATE_CARD_DETAILS => $this->buildCardsSummaryReply(
+                $conversationService,
+                $conversationSession,
                 $userId,
                 $menuBuilder,
                 $conversationQueryService->getCardsSummary(
                     $userId,
-                    $currentState === ConversationSession::STATE_CARD_INVOICE_ITEMS ? $parentPage : 1,
+                    $parentPage,
                     4
-                )
+                ),
+                false
             ),
-            'card_invoice_items', 'transactions_page' => $menuBuilder->buildMainMenu(),
-            default => $menuBuilder->buildMainMenu(),
+            ConversationSession::STATE_CARD_INVOICES => $this->buildCardDetailsReply(
+                $conversationService,
+                $conversationSession,
+                $userId,
+                $menuBuilder,
+                $conversationQueryService->getCardDetails(
+                    $userId,
+                    (int) $conversationSession->context(ConversationSession::CONTEXT_SELECTED_CARD_ID, 0)
+                ),
+                false
+            ),
+            ConversationSession::STATE_CARD_INVOICE_ITEMS => $this->buildCardInvoicesReply(
+                $conversationService,
+                $conversationSession,
+                $userId,
+                $menuBuilder,
+                $conversationQueryService->getCardInvoices(
+                    $userId,
+                    (int) $conversationSession->context(ConversationSession::CONTEXT_SELECTED_CARD_ID, 0),
+                    $parentPage,
+                    4
+                ),
+                $parentPage,
+                false
+            ),
+            ConversationSession::STATE_TRANSACTIONS_PAGE => $this->buildMainMenuReply(
+                $conversationService,
+                $conversationSession,
+                $userId,
+                $menuBuilder,
+            ),
+            default => $this->buildMainMenuReply(
+                $conversationService,
+                $conversationSession,
+                $userId,
+                $menuBuilder,
+            ),
         };
     }
 
@@ -612,6 +754,61 @@ class ProcessTelegramMessageJob implements ShouldQueue
         return $menuBuilder->buildCardsSummaryMenu($queryResult);
     }
 
+    private function buildCardDetailsReply(
+        TelegramConversationService $conversationService,
+        $conversationSession,
+        int $userId,
+        TelegramMenuBuilder $menuBuilder,
+        array $queryResult,
+        bool $rememberPrevious = true
+    ): string {
+        if (($queryResult['invalid_selection'] ?? false) === true) {
+            return $menuBuilder->buildUnknownForState(ConversationSession::STATE_CARDS_SUMMARY);
+        }
+
+        $conversationService->goToState($conversationSession, ConversationSession::STATE_CARD_DETAILS, [
+            ConversationSession::CONTEXT_SELECTED_CARD_ID => (int) ($queryResult['card_id'] ?? 0),
+            ConversationSession::CONTEXT_SELECTED_CARD_DESCRIPTION => (string) ($queryResult['card_description'] ?? 'Cartao'),
+            ConversationSession::CONTEXT_SELECTED_CARD_PAY_DAY => $queryResult['pay_day'] ?? null,
+            ConversationSession::CONTEXT_SELECTED_CARD_CLOSURE_DATE => $queryResult['closure_date'] ?? null,
+            ConversationSession::CONTEXT_SELECTED_CARD_INVOICE_TOTAL => (float) ($queryResult['invoice_total'] ?? 0),
+            ConversationSession::CONTEXT_PARENT_PAGE => (int) $conversationSession->context(ConversationSession::CONTEXT_PARENT_PAGE, $conversationSession->context(ConversationSession::CONTEXT_PAGE, 1)),
+        ], $userId, $rememberPrevious);
+
+        return $menuBuilder->buildCardDetailsMenu($queryResult);
+    }
+
+    private function buildCardInvoicesReply(
+        TelegramConversationService $conversationService,
+        $conversationSession,
+        int $userId,
+        TelegramMenuBuilder $menuBuilder,
+        array $queryResult,
+        int $page,
+        bool $rememberPrevious = true
+    ): string {
+        $invoiceOptions = [];
+
+        foreach (($queryResult['invoices'] ?? []) as $index => $invoice) {
+            $invoiceOptions[(string) ($index + 1)] = [
+                'pay_day' => $invoice['pay_day'] ?? null,
+                'closure_date' => $invoice['closure_date'] ?? null,
+                'total' => $invoice['total'] ?? 0,
+            ];
+        }
+
+        $conversationService->goToState($conversationSession, ConversationSession::STATE_CARD_INVOICES, [
+            ConversationSession::CONTEXT_SELECTED_CARD_ID => (int) ($queryResult['card_id'] ?? 0),
+            ConversationSession::CONTEXT_SELECTED_CARD_DESCRIPTION => (string) ($queryResult['card_description'] ?? 'Cartao'),
+            ConversationSession::CONTEXT_INVOICE_OPTIONS => $invoiceOptions,
+            ConversationSession::CONTEXT_PAGE => $page,
+            ConversationSession::CONTEXT_PER_PAGE => (int) ($queryResult['per_page'] ?? 4),
+            ConversationSession::CONTEXT_PARENT_PAGE => (int) $conversationSession->context(ConversationSession::CONTEXT_PARENT_PAGE, $conversationSession->context(ConversationSession::CONTEXT_PAGE, 1)),
+        ], $userId, $rememberPrevious);
+
+        return $menuBuilder->buildCardInvoicesMenu($queryResult);
+    }
+
     private function buildCardInvoiceItemsReply(
         TelegramConversationService $conversationService,
         $conversationSession,
@@ -631,12 +828,12 @@ class ProcessTelegramMessageJob implements ShouldQueue
         $conversationService->goToState($conversationSession, 'card_invoice_items', [
             'selected_card_id' => $selectedCardId,
             'selected_card_description' => $selectedCardDescription,
-            'selected_card_pay_day' => $queryResult['pay_day'] ?? null,
-            'selected_card_closure_date' => $queryResult['closure_date'] ?? null,
-            'selected_card_invoice_total' => (float) ($queryResult['invoice_total'] ?? 0),
+            'selected_invoice_pay_day' => $queryResult['pay_day'] ?? null,
+            'selected_invoice_closure_date' => $queryResult['closure_date'] ?? null,
+            'selected_invoice_total' => (float) ($queryResult['invoice_total'] ?? 0),
             'page' => $page,
             'per_page' => (int) ($queryResult['per_page'] ?? 5),
-            'parent_page' => (int) $conversationSession->context('parent_page', $conversationSession->context('page', 1)),
+            'parent_page' => (int) $conversationSession->context('page', 1),
         ], $userId, $rememberPrevious);
 
         return $menuBuilder->buildCardInvoiceItemsMenu($queryResult);
@@ -710,6 +907,26 @@ class ProcessTelegramMessageJob implements ShouldQueue
             $normalizedPayload,
             $sessionResult,
             'create_category_started',
+            ['success' => true]
+        );
+
+        return $result['message'];
+    }
+
+    private function startCardFlow(
+        TelegramCardFlowService $cardFlowService,
+        $conversationSession,
+        array $sessionResult,
+        array &$normalizedPayload,
+        TelegramAuditService $auditService
+    ): string {
+        $result = $cardFlowService->start($conversationSession, $sessionResult['user_id']);
+        $normalizedPayload['card_flow'] = $this->toLoggableArray($result);
+
+        $auditService->logAction(
+            $normalizedPayload,
+            $sessionResult,
+            'create_card_started',
             ['success' => true]
         );
 

@@ -17,6 +17,7 @@ class TelegramMenuBuilder
             '4 - nova entrada',
             '5 - nova saida',
             '6 - nova categoria',
+            '7 - novo cartao',
         ]);
     }
 
@@ -26,16 +27,32 @@ class TelegramMenuBuilder
             ConversationSession::STATE_CARDS_SUMMARY => implode("\n", [
                 'Voce esta em Cartoes.',
                 'Use:',
-                '1 a 4 - escolher cartao desta pagina',
+                '1 a 4 - abrir cartao desta pagina',
                 '5 - anteriores',
                 '6 - proximos',
                 '7 - voltar',
                 '0 - menu principal',
             ]),
-            ConversationSession::STATE_CARD_INVOICE_ITEMS => implode("\n", [
-                'Voce esta nos itens da fatura atual do cartao selecionado.',
+            ConversationSession::STATE_CARD_DETAILS => implode("\n", [
+                'Voce esta no submenu do cartao.',
                 'Use:',
-                '2 - pagar fatura deste cartao',
+                '1 - ver faturas',
+                '2 - pagar fatura atual',
+                '7 - voltar',
+                '0 - menu principal',
+            ]),
+            ConversationSession::STATE_CARD_INVOICES => implode("\n", [
+                'Voce esta na lista de faturas do cartao.',
+                'Use:',
+                '1 a 4 - abrir fatura desta pagina',
+                '5 - anteriores',
+                '6 - proximas',
+                '7 - voltar',
+                '0 - menu principal',
+            ]),
+            ConversationSession::STATE_CARD_INVOICE_ITEMS => implode("\n", [
+                'Voce esta nos itens da fatura selecionada.',
+                'Use:',
                 '5 - anteriores',
                 '6 - proximas',
                 '7 - voltar',
@@ -95,10 +112,8 @@ class TelegramMenuBuilder
             $lines[] = ($index + 1) . ' - ' . ($card['card_description'] ?? 'Cartao sem nome');
             $lines[] = '  Em aberto: ' . $this->money($card['open_total'] ?? 0);
             $lines[] = '  Fatura atual: ' . $this->money($card['invoice_total'] ?? 0);
-            $lines[] = '  Fechamento: ' . $this->formatDate($card['closure_date'] ?? null)
-                . ' (dia ' . ($card['closure'] ?? '-') . ')';
-            $lines[] = '  Vencimento: ' . $this->formatDate($card['pay_day'] ?? null)
-                . ' (dia ' . ($card['expiration'] ?? '-') . ')';
+            $lines[] = '  Fechamento: ' . $this->formatDate($card['closure_date'] ?? null);
+            $lines[] = '  Vencimento: ' . $this->formatDate($card['pay_day'] ?? null);
         }
 
         $lines[] = '';
@@ -111,38 +126,78 @@ class TelegramMenuBuilder
             $lines[] = '6 - proximos';
         }
 
-        $lines[] = 'Escolha 1 a 4 para ver os itens da fatura atual.';
+        $lines[] = 'Escolha 1 a 4 para abrir um cartao.';
         $lines[] = '7 - voltar';
         $lines[] = '0 - menu principal';
 
         return implode("\n", $lines);
     }
 
-    public function buildInvoicesMenu(array $data): string
+    public function buildCardDetailsMenu(array $data): string
     {
-        $cards = $data['cards'] ?? [];
+        $lines = [
+            'Cartao: ' . ($data['card_description'] ?? 'Cartao'),
+            'Bandeira: ' . ($data['flag_description'] ?? '-'),
+            'Em aberto: ' . $this->money($data['open_total'] ?? 0),
+            'Fatura atual: ' . $this->money($data['invoice_total'] ?? 0),
+            'Status: ' . ($data['invoice_status'] ?? '-'),
+            'Fechamento: ' . $this->formatDate($data['closure_date'] ?? null)
+                . ' (dia ' . ($data['closure'] ?? '-') . ')',
+            'Vencimento: ' . $this->formatDate($data['pay_day'] ?? null)
+                . ' (dia ' . ($data['expiration'] ?? '-') . ')',
+            '',
+            '1 - ver faturas',
+        ];
 
-        if ($cards === []) {
+        if (($data['has_open_invoice'] ?? false) === true) {
+            $lines[] = '2 - pagar fatura atual';
+        }
+
+        $lines[] = '7 - voltar';
+        $lines[] = '0 - menu principal';
+
+        return implode("\n", $lines);
+    }
+
+    public function buildCardInvoicesMenu(array $data): string
+    {
+        $invoices = $data['invoices'] ?? [];
+        $page = (int) ($data['page'] ?? 1);
+        $hasPrevious = (bool) ($data['has_previous'] ?? false);
+        $hasMore = (bool) ($data['has_more'] ?? false);
+
+        if ($invoices === []) {
             return implode("\n", [
-                'Voce ainda nao possui cartoes cadastrados.',
+                'Nao encontrei faturas para este cartao.',
                 '',
                 '7 - voltar',
                 '0 - menu principal',
             ]);
         }
 
-        $lines = ['Faturas dos cartoes:'];
+        $lines = [
+            'Faturas - ' . ($data['card_description'] ?? 'Cartao') . ' - pagina ' . $page . ':',
+        ];
 
-        foreach ($cards as $card) {
-            $lines[] = '- ' . ($card['card_description'] ?? 'Cartao sem nome');
-            $lines[] = '  Fatura atual: ' . $this->money($card['open_total'] ?? 0);
-            $lines[] = '  Fechamento: ' . $this->formatDate($card['closure_date'] ?? null)
-                . ' (dia ' . ($card['closure'] ?? '-') . ')';
-            $lines[] = '  Vencimento: ' . $this->formatDate($card['pay_day'] ?? null)
-                . ' (dia ' . ($card['expiration'] ?? '-') . ')';
+        foreach ($invoices as $index => $invoice) {
+            $lines[] = ($index + 1) . ' - Vencimento: ' . $this->formatDate($invoice['pay_day'] ?? null);
+            $lines[] = '  Fechamento: ' . $this->formatDate($invoice['closure_date'] ?? null);
+            $lines[] = '  Total: ' . $this->money($invoice['total'] ?? 0);
+            $lines[] = '  Em aberto: ' . $this->money($invoice['open_total'] ?? 0);
+            $lines[] = '  Status: ' . ($invoice['status'] ?? '-');
         }
 
         $lines[] = '';
+
+        if ($hasPrevious) {
+            $lines[] = '5 - anteriores';
+        }
+
+        if ($hasMore) {
+            $lines[] = '6 - proximas';
+        }
+
+        $lines[] = 'Escolha 1 a 4 para abrir uma fatura.';
         $lines[] = '7 - voltar';
         $lines[] = '0 - menu principal';
 
@@ -155,38 +210,26 @@ class TelegramMenuBuilder
         $page = (int) ($data['page'] ?? 1);
         $hasPrevious = (bool) ($data['has_previous'] ?? false);
         $hasMore = (bool) ($data['has_more'] ?? false);
-        $canShowPaymentAction = !is_null($data['pay_day'] ?? null) && (float) ($data['invoice_total'] ?? 0) > 0;
+
+        $lines = [
+            'Cartao: ' . ($data['card_description'] ?? 'Cartao'),
+            'Fatura: ' . $this->formatDate($data['pay_day'] ?? null),
+            'Fechamento: ' . $this->formatDate($data['closure_date'] ?? null),
+            'Total: ' . $this->money($data['invoice_total'] ?? 0),
+            'Em aberto: ' . $this->money($data['open_total'] ?? 0),
+            'Status: ' . ($data['status'] ?? '-'),
+            'Pagina ' . $page,
+        ];
 
         if ($items === []) {
-            $lines = [
-                'Nao encontrei itens em aberto para a fatura atual deste cartao.',
-                'Cartao: ' . ($data['card_description'] ?? 'Cartao'),
-            ];
-
-            if ($canShowPaymentAction) {
-                $lines[] = 'Fatura atual: ' . $this->money($data['invoice_total'] ?? 0);
-                $lines[] = 'Vencimento: ' . $this->formatDate($data['pay_day'] ?? null);
-            }
-
             $lines[] = '';
-
-            if ($canShowPaymentAction) {
-                $lines[] = '2 - pagar fatura deste cartao';
-            }
-
+            $lines[] = 'Nao encontrei itens para esta fatura.';
+            $lines[] = '';
             $lines[] = '7 - voltar';
             $lines[] = '0 - menu principal';
 
             return implode("\n", $lines);
         }
-
-        $lines = [
-            'Cartao: ' . ($data['card_description'] ?? 'Cartao'),
-            'Fatura atual: ' . $this->money($data['invoice_total'] ?? 0),
-            'Pagina ' . $page,
-            'Fechamento: ' . $this->formatDate($data['closure_date'] ?? null),
-            'Vencimento: ' . $this->formatDate($data['pay_day'] ?? null),
-        ];
 
         foreach ($items as $index => $item) {
             $lines[] = '';
@@ -205,10 +248,6 @@ class TelegramMenuBuilder
 
         if ($hasMore) {
             $lines[] = '6 - proximas';
-        }
-
-        if ($canShowPaymentAction) {
-            $lines[] = '2 - pagar fatura deste cartao';
         }
 
         $lines[] = '7 - voltar';
@@ -270,9 +309,23 @@ class TelegramMenuBuilder
                 '7 - voltar',
                 '0 - menu principal',
             ]),
+            ConversationSession::STATE_CARD_DETAILS => implode("\n", [
+                'Opcao invalida para este submenu.',
+                '1 - ver faturas',
+                '2 - pagar fatura atual',
+                '7 - voltar',
+                '0 - menu principal',
+            ]),
+            ConversationSession::STATE_CARD_INVOICES => implode("\n", [
+                'Opcao invalida para este submenu.',
+                'Escolha 1 a 4 para abrir uma fatura, ou use:',
+                '5 - anteriores',
+                '6 - proximas',
+                '7 - voltar',
+                '0 - menu principal',
+            ]),
             ConversationSession::STATE_CARD_INVOICE_ITEMS => implode("\n", [
                 'Opcao invalida para este submenu.',
-                '2 - pagar fatura deste cartao',
                 '5 - anteriores',
                 '6 - proximas',
                 '7 - voltar',

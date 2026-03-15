@@ -56,7 +56,7 @@ class TelegramCardInvoicePaymentFlowService
 
         $methods = $this->lookupService->getInvoicePaymentMethods();
         $this->updateSession($session, ConversationSession::STATE_CARD_INVOICE_PAYMENT_METHOD, [
-            ConversationSession::CONTEXT_PREVIOUS_STATE => ConversationSession::STATE_CARD_INVOICE_ITEMS,
+            ConversationSession::CONTEXT_PREVIOUS_STATE => ConversationSession::STATE_CARD_DETAILS,
             ConversationSession::CONTEXT_FLOW => 'card_invoice_payment',
             ConversationSession::CONTEXT_SELECTED_CARD_ID => $cardContext['selected_card_id'],
             ConversationSession::CONTEXT_SELECTED_CARD_DESCRIPTION => $cardContext['selected_card_description'],
@@ -121,17 +121,15 @@ class TelegramCardInvoicePaymentFlowService
         $history = $session->context(ConversationSession::CONTEXT_STEP_HISTORY, []);
 
         if ($history === []) {
-            $queryResult = $this->cardsQueryService->getCardInvoiceItems(
+            $queryResult = $this->cardsQueryService->getCardDetails(
                 $userId,
-                (int) $session->context(ConversationSession::CONTEXT_SELECTED_CARD_ID, 0),
-                (int) $session->context(ConversationSession::CONTEXT_PAGE, 1),
-                (int) $session->context(ConversationSession::CONTEXT_PER_PAGE, 5)
+                (int) $session->context(ConversationSession::CONTEXT_SELECTED_CARD_ID, 0)
             );
-            $this->restoreCardItemsState($session, $userId, $queryResult);
+            $this->restoreCardDetailsState($session, $userId, $queryResult);
 
             return [
                 'status' => 'in_progress',
-                'message' => $this->menuBuilder->buildCardInvoiceItemsMenu($queryResult),
+                'message' => $this->menuBuilder->buildCardDetailsMenu($queryResult),
             ];
         }
 
@@ -270,17 +268,15 @@ class TelegramCardInvoicePaymentFlowService
         $session->touchMessage($userId);
     }
 
-    private function restoreCardItemsState(ConversationSession $session, int $userId, array $queryResult): void
+    private function restoreCardDetailsState(ConversationSession $session, int $userId, array $queryResult): void
     {
-        $this->updateSession($session, ConversationSession::STATE_CARD_INVOICE_ITEMS, [
+        $this->updateSession($session, ConversationSession::STATE_CARD_DETAILS, [
             ConversationSession::CONTEXT_PREVIOUS_STATE => ConversationSession::STATE_CARDS_SUMMARY,
             ConversationSession::CONTEXT_SELECTED_CARD_ID => $session->context(ConversationSession::CONTEXT_SELECTED_CARD_ID),
             ConversationSession::CONTEXT_SELECTED_CARD_DESCRIPTION => $session->context(ConversationSession::CONTEXT_SELECTED_CARD_DESCRIPTION),
             ConversationSession::CONTEXT_SELECTED_CARD_PAY_DAY => $queryResult['pay_day'] ?? $session->context(ConversationSession::CONTEXT_SELECTED_CARD_PAY_DAY),
             ConversationSession::CONTEXT_SELECTED_CARD_CLOSURE_DATE => $queryResult['closure_date'] ?? $session->context(ConversationSession::CONTEXT_SELECTED_CARD_CLOSURE_DATE),
             ConversationSession::CONTEXT_SELECTED_CARD_INVOICE_TOTAL => $queryResult['invoice_total'] ?? $session->context(ConversationSession::CONTEXT_SELECTED_CARD_INVOICE_TOTAL),
-            ConversationSession::CONTEXT_PAGE => (int) ($queryResult['page'] ?? $session->context(ConversationSession::CONTEXT_PAGE, 1)),
-            ConversationSession::CONTEXT_PER_PAGE => (int) ($queryResult['per_page'] ?? $session->context(ConversationSession::CONTEXT_PER_PAGE, 5)),
             ConversationSession::CONTEXT_PARENT_PAGE => $session->context(ConversationSession::CONTEXT_PARENT_PAGE, 1),
         ], $userId);
     }

@@ -12,11 +12,18 @@ class ConversationSession extends Model
 
     public const STATE_MAIN_MENU = 'main_menu';
     public const STATE_CARDS_SUMMARY = 'cards_summary';
+    public const STATE_CARD_DETAILS = 'card_details';
+    public const STATE_CARD_INVOICES = 'card_invoices';
     public const STATE_CARD_INVOICE_ITEMS = 'card_invoice_items';
     public const STATE_CARD_INVOICE_PAYMENT_METHOD = 'card_invoice_payment_method';
     public const STATE_CARD_INVOICE_PAYMENT_CATEGORY = 'card_invoice_payment_category';
     public const STATE_CARD_INVOICE_PAYMENT_CONFIRM = 'card_invoice_payment_confirm';
     public const STATE_INVOICES_MENU = 'invoices_menu';
+    public const STATE_CARD_CREATE_DESCRIPTION = 'card_create_description';
+    public const STATE_CARD_CREATE_FLAG = 'card_create_flag';
+    public const STATE_CARD_CREATE_CLOSURE = 'card_create_closure';
+    public const STATE_CARD_CREATE_EXPIRATION = 'card_create_expiration';
+    public const STATE_CARD_CREATE_CONFIRM = 'card_create_confirm';
     public const STATE_TRANSACTIONS_PAGE = 'transactions_page';
     public const STATE_TRANSACTION_INCOME_VALUE = 'transaction_income_value';
     public const STATE_TRANSACTION_INCOME_DESCRIPTION = 'transaction_income_description';
@@ -43,6 +50,10 @@ class ConversationSession extends Model
     public const CONTEXT_SELECTED_CARD_PAY_DAY = 'selected_card_pay_day';
     public const CONTEXT_SELECTED_CARD_CLOSURE_DATE = 'selected_card_closure_date';
     public const CONTEXT_SELECTED_CARD_INVOICE_TOTAL = 'selected_card_invoice_total';
+    public const CONTEXT_SELECTED_INVOICE_PAY_DAY = 'selected_invoice_pay_day';
+    public const CONTEXT_SELECTED_INVOICE_CLOSURE_DATE = 'selected_invoice_closure_date';
+    public const CONTEXT_SELECTED_INVOICE_TOTAL = 'selected_invoice_total';
+    public const CONTEXT_INVOICE_OPTIONS = 'invoice_options';
     public const CONTEXT_PARENT_PAGE = 'parent_page';
     public const CONTEXT_FLOW = 'flow';
     public const CONTEXT_DRAFT = 'draft';

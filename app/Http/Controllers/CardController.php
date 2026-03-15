@@ -8,6 +8,7 @@ use App\Models\Category;
 use App\Models\Flag;
 use App\Models\Installment;
 use App\Models\Transaction;
+use App\Services\Cards\CardCreationService;
 use App\Services\Cards\CardInvoicePaymentService;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
@@ -20,7 +21,8 @@ use Illuminate\Validation\ValidationException;
 class CardController extends Controller
 {
     public function __construct(
-        private readonly CardInvoicePaymentService $cardInvoicePaymentService
+        private readonly CardInvoicePaymentService $cardInvoicePaymentService,
+        private readonly CardCreationService $cardCreationService
     ) {
     }
 
@@ -55,27 +57,10 @@ class CardController extends Controller
 
     public function store(Request $request): JsonResponse
     {
-        $request->validate([
-            'card_description' => ['required', 'string', 'min:2', 'max:50'],
-            'flag_id' => ['required', 'exists:flags,id'],
-            'expiration' => ['required', 'integer', 'min:1', 'max:31', 'different:closure'],
-            'closure' => ['required', 'integer', 'min:1', 'max:31'],
-        ], [
-            'expiration.different' => 'O vencimento nao pode ser no mesmo dia do fechamento.',
-        ]);
-
-        $card = Card::create([
-            'user_id' => Auth::user()->id,
-            'flag_id' => $request->flag_id,
-            'card_description' => $request->card_description,
-            'expiration' => $request->expiration,
-            'closure' => $request->closure
-        ]);
-
-        LevelController::completeMission(3);
+        $result = $this->cardCreationService->create(Auth::id(), $request->all());
 
         return response()->json([
-            'card' => $card
+            'card' => $result['card']
         ], 201);
     }
 
