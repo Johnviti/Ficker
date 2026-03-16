@@ -338,6 +338,11 @@ class TransactionController extends Controller
                     'payment_transaction_id' => null
                 ]);
 
+                Installment::where('transaction_id', $id)->update([
+                    'paid_at' => null,
+                    'payment_transaction_id' => null
+                ]);
+
                 Installment::where('transaction_id', $id)->delete();
 
                 $transaction->delete();
