@@ -332,7 +332,14 @@ class TransactionController extends Controller
         try {
             DB::transaction(function () use ($id) {
                 $transaction = Transaction::where('user_id', Auth::id())->findOrFail($id);
+
+                Installment::where('payment_transaction_id', $id)->update([
+                    'paid_at' => null,
+                    'payment_transaction_id' => null
+                ]);
+
                 Installment::where('transaction_id', $id)->delete();
+
                 $transaction->delete();
             });
 
