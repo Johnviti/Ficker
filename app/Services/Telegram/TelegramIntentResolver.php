@@ -127,6 +127,13 @@ class TelegramIntentResolver
             }
         }
 
+        if ($state !== ConversationSession::STATE_MAIN_MENU) {
+            return [
+                'intent' => 'unknown',
+                'text' => $normalizedText,
+            ];
+        }
+
         return match (true) {
             in_array($normalizedText, ['1', 'cartoes', 'resumo de cartoes', 'fatura', 'faturas', 'proxima fatura'], true) => [
                 'intent' => 'cards_summary',
