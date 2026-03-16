@@ -7,6 +7,7 @@ class TelegramCardInvoicePaymentReplyBuilder
     public function buildUnavailable(string $message, array $cardContext = []): string
     {
         $lines = [
+            'Pagamento da fatura indisponivel',
             $message,
             'Cartao: ' . ($cardContext['selected_card_description'] ?? 'Cartao'),
         ];
@@ -29,7 +30,8 @@ class TelegramCardInvoicePaymentReplyBuilder
     public function buildPaymentMethodPrompt(array $methods, array $cardContext = []): string
     {
         $lines = [
-            'Pagamento de fatura.',
+            'Pagamento da fatura',
+            'Passo 1',
             'Cartao: ' . ($cardContext['selected_card_description'] ?? 'Cartao'),
             'Valor da fatura: ' . $this->money($cardContext['selected_card_invoice_total'] ?? 0),
             'Vencimento: ' . $this->formatDate($cardContext['selected_card_pay_day'] ?? null),
@@ -51,6 +53,8 @@ class TelegramCardInvoicePaymentReplyBuilder
     public function buildCategoryPrompt(array $categories, array $cardContext = []): string
     {
         $lines = [
+            'Pagamento da fatura',
+            'Passo 2',
             'Escolha a categoria da saida:',
         ];
 
@@ -71,7 +75,7 @@ class TelegramCardInvoicePaymentReplyBuilder
     public function buildConfirmationPrompt(array $draft, array $cardContext = []): string
     {
         return implode("\n", [
-            'Confirme o pagamento da fatura:',
+            'Confirmar pagamento da fatura',
             'Cartao: ' . ($cardContext['selected_card_description'] ?? 'Cartao'),
             'Valor: ' . $this->money($cardContext['selected_card_invoice_total'] ?? 0),
             'Vencimento: ' . $this->formatDate($cardContext['selected_card_pay_day'] ?? null),
@@ -101,7 +105,7 @@ class TelegramCardInvoicePaymentReplyBuilder
     public function buildCancelled(): string
     {
         return implode("\n", [
-            'Pagamento de fatura cancelado.',
+            'Pagamento da fatura cancelado.',
             '',
             '0 - menu principal',
         ]);

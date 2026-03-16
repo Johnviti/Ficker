@@ -7,7 +7,8 @@ class TelegramCardReplyBuilder
     public function buildDescriptionPrompt(): string
     {
         return implode("\n", [
-            'Novo cartao.',
+            'Novo cartao',
+            'Passo 1',
             'Digite a descricao do cartao.',
             'Exemplo: Cartao Viagem',
             '',
@@ -27,7 +28,11 @@ class TelegramCardReplyBuilder
             ]);
         }
 
-        $lines = ['Escolha a bandeira do cartao:'];
+        $lines = [
+            'Novo cartao',
+            'Passo 2',
+            'Escolha a bandeira do cartao:',
+        ];
 
         foreach ($flags as $option => $flag) {
             $lines[] = $option . ' - ' . ($flag['description'] ?? 'Bandeira');
@@ -43,6 +48,8 @@ class TelegramCardReplyBuilder
     public function buildClosurePrompt(): string
     {
         return implode("\n", [
+            'Novo cartao',
+            'Passo 3',
             'Digite o dia do fechamento.',
             'Exemplo: 15',
             '',
@@ -54,6 +61,8 @@ class TelegramCardReplyBuilder
     public function buildExpirationPrompt(): string
     {
         return implode("\n", [
+            'Novo cartao',
+            'Passo 4',
             'Digite o dia do vencimento.',
             'Exemplo: 3',
             '',
@@ -65,7 +74,7 @@ class TelegramCardReplyBuilder
     public function buildConfirmationPrompt(array $draft): string
     {
         return implode("\n", [
-            'Confirme os dados do cartao:',
+            'Confirmar cartao',
             'Descricao: ' . ($draft['card_description'] ?? '-'),
             'Bandeira: ' . ($draft['resolved_flag_description'] ?? '-'),
             'Fechamento: dia ' . ($draft['closure'] ?? '-'),

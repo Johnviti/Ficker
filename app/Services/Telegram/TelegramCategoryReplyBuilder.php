@@ -7,7 +7,8 @@ class TelegramCategoryReplyBuilder
     public function buildTypePrompt(): string
     {
         return implode("\n", [
-            'Nova categoria.',
+            'Nova categoria',
+            'Passo 1',
             'Escolha o tipo:',
             '1 - categoria de entrada',
             '2 - categoria de saida',
@@ -20,6 +21,8 @@ class TelegramCategoryReplyBuilder
     public function buildDescriptionPrompt(): string
     {
         return implode("\n", [
+            'Nova categoria',
+            'Passo 2',
             'Digite a descricao da categoria.',
             'Exemplo: Saude',
             '',
@@ -31,7 +34,7 @@ class TelegramCategoryReplyBuilder
     public function buildConfirmationPrompt(array $draft): string
     {
         return implode("\n", [
-            'Confirme os dados da categoria:',
+            'Confirmar categoria',
             'Tipo: ' . $this->typeLabel((int) ($draft['type_id'] ?? 0)),
             'Descricao: ' . ($draft['category_description'] ?? '-'),
             '',

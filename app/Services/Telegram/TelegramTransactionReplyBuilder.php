@@ -7,7 +7,8 @@ class TelegramTransactionReplyBuilder
     public function buildValuePrompt(string $flow): string
     {
         return implode("\n", [
-            $flow === 'income' ? 'Nova entrada.' : 'Nova saida.',
+            $flow === 'income' ? 'Nova entrada' : 'Nova saida',
+            'Passo 1',
             'Digite o valor usando apenas numeros.',
             'Exemplo: 125.90',
             '',
@@ -19,6 +20,8 @@ class TelegramTransactionReplyBuilder
     public function buildDescriptionPrompt(): string
     {
         return implode("\n", [
+            'Nova transacao',
+            'Passo 2',
             'Digite uma descricao curta para a transacao.',
             'Exemplo: Mercado do mes',
             '',
@@ -40,6 +43,8 @@ class TelegramTransactionReplyBuilder
         }
 
         $lines = [
+            'Nova transacao',
+            'Passo 3',
             $flow === 'income' ? 'Escolha a categoria da entrada:' : 'Escolha a categoria da saida:',
         ];
 
@@ -57,6 +62,8 @@ class TelegramTransactionReplyBuilder
     public function buildDatePrompt(): string
     {
         return implode("\n", [
+            'Nova transacao',
+            'Passo 4',
             'Digite a data no formato DD/MM/AAAA.',
             'Exemplo: 14/03/2026',
             '',
@@ -67,7 +74,11 @@ class TelegramTransactionReplyBuilder
 
     public function buildPaymentMethodPrompt(array $paymentMethods): string
     {
-        $lines = ['Escolha a forma de pagamento:'];
+        $lines = [
+            'Nova saida',
+            'Passo 5',
+            'Escolha a forma de pagamento:',
+        ];
 
         foreach ($paymentMethods as $option => $paymentMethod) {
             $lines[] = $option . ' - ' . ($paymentMethod['description'] ?? 'Forma de pagamento');
@@ -97,7 +108,11 @@ class TelegramTransactionReplyBuilder
             ]);
         }
 
-        $lines = ['Escolha o cartao - pagina ' . $page . ':'];
+        $lines = [
+            'Nova saida',
+            'Escolha o cartao',
+            'Pagina ' . $page,
+        ];
 
         foreach ($cards as $option => $card) {
             $lines[] = $option . ' - ' . ($card['description'] ?? 'Cartao');
@@ -122,6 +137,8 @@ class TelegramTransactionReplyBuilder
     public function buildInstallmentsPrompt(): string
     {
         return implode("\n", [
+            'Nova saida',
+            'Passo final antes da confirmacao',
             'Digite o numero de parcelas.',
             'Exemplo: 3',
             '',
@@ -133,7 +150,7 @@ class TelegramTransactionReplyBuilder
     public function buildConfirmationPrompt(array $draft): string
     {
         $lines = [
-            'Confirme os dados da transacao:',
+            'Confirmar transacao',
             'Tipo: ' . (($draft['type_id'] ?? 2) === 1 ? 'Entrada' : 'Saida'),
             'Valor: ' . $this->money($draft['transaction_value'] ?? 0),
             'Descricao: ' . ($draft['transaction_description'] ?? '-'),
@@ -171,7 +188,7 @@ class TelegramTransactionReplyBuilder
     public function buildCancelled(): string
     {
         return implode("\n", [
-            'Fluxo cancelado.',
+            'Criacao cancelada.',
             '',
             '0 - menu principal',
             '1 - cartoes',

@@ -11,29 +11,15 @@ class TelegramFinancialReplyBuilder
                 'Seu acesso no Telegram expirou por inatividade.',
                 'Gere um novo codigo no Ficker para reconectar sua conta.',
                 '',
-                'Menu principal:',
+                'Use:',
                 '0 - menu principal',
-                '1 - cartoes',
-                '2 - transacoes',
-                '3 - saldo geral',
-                '4 - nova entrada',
-                '5 - nova saida',
-                '6 - nova categoria',
-                '7 - novo cartao',
             ]),
             'revoked', 'not_linked' => implode("\n", [
                 'Seu Telegram ainda nao esta conectado ao Ficker.',
                 'Gere um codigo no app e envie aqui para vincular sua conta.',
                 '',
-                'Menu principal:',
+                'Use:',
                 '0 - menu principal',
-                '1 - cartoes',
-                '2 - transacoes',
-                '3 - saldo geral',
-                '4 - nova entrada',
-                '5 - nova saida',
-                '6 - nova categoria',
-                '7 - novo cartao',
             ]),
             default => implode("\n", [
                 'Nao consegui validar sua sessao no Telegram agora.',
@@ -60,7 +46,9 @@ class TelegramFinancialReplyBuilder
     private function buildHelpReply(): string
     {
         return implode("\n", [
-            'Menu principal:',
+            'Ficker no Telegram',
+            'Escolha uma opcao:',
+            '',
             '0 - menu principal',
             '1 - cartoes',
             '2 - transacoes',
@@ -75,6 +63,7 @@ class TelegramFinancialReplyBuilder
     private function buildBalanceReply(array $data): string
     {
         return implode("\n", [
+            'Saldo geral',
             'Saldo atual: ' . $this->money($data['balance'] ?? 0),
             'Gasto real no mes: ' . $this->money($data['real_spending'] ?? 0),
             'Gasto planejado: ' . $this->money($data['planned_spending'] ?? 0),
@@ -87,7 +76,7 @@ class TelegramFinancialReplyBuilder
     {
         return implode("\n", [
             'Nao entendi o que voce quer consultar.',
-            'Use uma das opcoes do menu:',
+            'Use uma opcao do menu principal:',
             '0 - menu principal',
             '1 - cartoes',
             '2 - transacoes',

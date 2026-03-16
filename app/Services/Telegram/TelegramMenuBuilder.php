@@ -9,7 +9,9 @@ class TelegramMenuBuilder
     public function buildMainMenu(): string
     {
         return implode("\n", [
-            'Menu principal:',
+            'Ficker no Telegram',
+            'Escolha uma opcao:',
+            '',
             '0 - menu principal',
             '1 - cartoes',
             '2 - transacoes',
@@ -25,8 +27,9 @@ class TelegramMenuBuilder
     {
         return match ($state) {
             ConversationSession::STATE_CARDS_SUMMARY => implode("\n", [
-                'Voce esta em Cartoes.',
-                'Use:',
+                'Ajuda - cartoes',
+                'Voce esta vendo a lista de cartoes.',
+                '',
                 '1 a 4 - abrir cartao desta pagina',
                 '5 - anteriores',
                 '6 - proximos',
@@ -34,16 +37,18 @@ class TelegramMenuBuilder
                 '0 - menu principal',
             ]),
             ConversationSession::STATE_CARD_DETAILS => implode("\n", [
-                'Voce esta no submenu do cartao.',
-                'Use:',
+                'Ajuda - detalhe do cartao',
+                'Voce esta no submenu do cartao selecionado.',
+                '',
                 '1 - ver faturas',
                 '2 - pagar fatura atual',
                 '7 - voltar',
                 '0 - menu principal',
             ]),
             ConversationSession::STATE_CARD_INVOICES => implode("\n", [
-                'Voce esta na lista de faturas do cartao.',
-                'Use:',
+                'Ajuda - faturas do cartao',
+                'Voce esta vendo as faturas do cartao selecionado.',
+                '',
                 '1 a 4 - abrir fatura desta pagina',
                 '5 - anteriores',
                 '6 - proximas',
@@ -51,36 +56,41 @@ class TelegramMenuBuilder
                 '0 - menu principal',
             ]),
             ConversationSession::STATE_CARD_INVOICE_ITEMS => implode("\n", [
-                'Voce esta nos itens da fatura selecionada.',
-                'Use:',
+                'Ajuda - itens da fatura',
+                'Voce esta vendo os itens da fatura selecionada.',
+                '',
                 '5 - anteriores',
                 '6 - proximas',
                 '7 - voltar',
                 '0 - menu principal',
             ]),
             ConversationSession::STATE_CARD_INVOICE_PAYMENT_METHOD => implode("\n", [
-                'Voce esta pagando a fatura do cartao selecionado.',
-                'Escolha uma forma de pagamento listada ou use:',
+                'Ajuda - pagamento da fatura',
+                'Escolha uma forma de pagamento da lista.',
+                '',
                 '7 - voltar',
                 '0 - cancelar',
             ]),
             ConversationSession::STATE_CARD_INVOICE_PAYMENT_CATEGORY => implode("\n", [
-                'Voce esta escolhendo a categoria do pagamento da fatura.',
-                'Escolha uma categoria listada ou use:',
+                'Ajuda - categoria do pagamento',
+                'Escolha uma categoria da lista.',
+                '',
                 '7 - voltar',
                 '0 - cancelar',
             ]),
             ConversationSession::STATE_CARD_INVOICE_PAYMENT_CONFIRM => implode("\n", [
-                'Voce esta confirmando o pagamento da fatura.',
-                'Use:',
+                'Ajuda - confirmar pagamento',
+                'Revise os dados antes de confirmar.',
+                '',
                 '1 - confirmar',
                 '2 - cancelar',
                 '7 - voltar',
                 '0 - cancelar',
             ]),
             ConversationSession::STATE_TRANSACTIONS_PAGE => implode("\n", [
-                'Voce esta em Transacoes.',
-                'Use:',
+                'Ajuda - transacoes',
+                'Voce esta vendo a lista de transacoes.',
+                '',
                 '5 - anteriores',
                 '6 - proximas',
                 '7 - voltar',
@@ -99,6 +109,7 @@ class TelegramMenuBuilder
 
         if ($cards === []) {
             return implode("\n", [
+                'Cartoes',
                 'Voce ainda nao possui cartoes cadastrados.',
                 '',
                 '7 - voltar',
@@ -106,17 +117,22 @@ class TelegramMenuBuilder
             ]);
         }
 
-        $lines = ['Cartoes - pagina ' . $page . ':'];
+        $lines = [
+            'Cartoes',
+            'Pagina ' . $page,
+        ];
 
         foreach ($cards as $index => $card) {
+            $lines[] = '';
             $lines[] = ($index + 1) . ' - ' . ($card['card_description'] ?? 'Cartao sem nome');
-            $lines[] = '  Em aberto: ' . $this->money($card['open_total'] ?? 0);
-            $lines[] = '  Fatura atual: ' . $this->money($card['invoice_total'] ?? 0);
-            $lines[] = '  Fechamento: ' . $this->formatDate($card['closure_date'] ?? null);
-            $lines[] = '  Vencimento: ' . $this->formatDate($card['pay_day'] ?? null);
+            $lines[] = 'Em aberto: ' . $this->money($card['open_total'] ?? 0);
+            $lines[] = 'Fatura atual: ' . $this->money($card['invoice_total'] ?? 0);
+            $lines[] = 'Fechamento: ' . $this->formatDate($card['closure_date'] ?? null);
+            $lines[] = 'Vencimento: ' . $this->formatDate($card['pay_day'] ?? null);
         }
 
         $lines[] = '';
+        $lines[] = 'Abrir cartao: 1 a 4';
 
         if ($hasPrevious) {
             $lines[] = '5 - anteriores';
@@ -126,7 +142,6 @@ class TelegramMenuBuilder
             $lines[] = '6 - proximos';
         }
 
-        $lines[] = 'Escolha 1 a 4 para abrir um cartao.';
         $lines[] = '7 - voltar';
         $lines[] = '0 - menu principal';
 
@@ -136,6 +151,7 @@ class TelegramMenuBuilder
     public function buildCardDetailsMenu(array $data): string
     {
         $lines = [
+            'Detalhe do cartao',
             'Cartao: ' . ($data['card_description'] ?? 'Cartao'),
             'Bandeira: ' . ($data['flag_description'] ?? '-'),
             'Em aberto: ' . $this->money($data['open_total'] ?? 0),
@@ -146,6 +162,7 @@ class TelegramMenuBuilder
             'Vencimento: ' . $this->formatDate($data['pay_day'] ?? null)
                 . ' (dia ' . ($data['expiration'] ?? '-') . ')',
             '',
+            'Acoes:',
             '1 - ver faturas',
         ];
 
@@ -168,6 +185,7 @@ class TelegramMenuBuilder
 
         if ($invoices === []) {
             return implode("\n", [
+                'Faturas do cartao',
                 'Nao encontrei faturas para este cartao.',
                 '',
                 '7 - voltar',
@@ -176,18 +194,22 @@ class TelegramMenuBuilder
         }
 
         $lines = [
-            'Faturas - ' . ($data['card_description'] ?? 'Cartao') . ' - pagina ' . $page . ':',
+            'Faturas do cartao',
+            'Cartao: ' . ($data['card_description'] ?? 'Cartao'),
+            'Pagina ' . $page,
         ];
 
         foreach ($invoices as $index => $invoice) {
+            $lines[] = '';
             $lines[] = ($index + 1) . ' - Vencimento: ' . $this->formatDate($invoice['pay_day'] ?? null);
-            $lines[] = '  Fechamento: ' . $this->formatDate($invoice['closure_date'] ?? null);
-            $lines[] = '  Total: ' . $this->money($invoice['total'] ?? 0);
-            $lines[] = '  Em aberto: ' . $this->money($invoice['open_total'] ?? 0);
-            $lines[] = '  Status: ' . ($invoice['status'] ?? '-');
+            $lines[] = 'Fechamento: ' . $this->formatDate($invoice['closure_date'] ?? null);
+            $lines[] = 'Total: ' . $this->money($invoice['total'] ?? 0);
+            $lines[] = 'Em aberto: ' . $this->money($invoice['open_total'] ?? 0);
+            $lines[] = 'Status: ' . ($invoice['status'] ?? '-');
         }
 
         $lines[] = '';
+        $lines[] = 'Abrir fatura: 1 a 4';
 
         if ($hasPrevious) {
             $lines[] = '5 - anteriores';
@@ -197,7 +219,6 @@ class TelegramMenuBuilder
             $lines[] = '6 - proximas';
         }
 
-        $lines[] = 'Escolha 1 a 4 para abrir uma fatura.';
         $lines[] = '7 - voltar';
         $lines[] = '0 - menu principal';
 
@@ -212,6 +233,7 @@ class TelegramMenuBuilder
         $hasMore = (bool) ($data['has_more'] ?? false);
 
         $lines = [
+            'Itens da fatura',
             'Cartao: ' . ($data['card_description'] ?? 'Cartao'),
             'Fatura: ' . $this->formatDate($data['pay_day'] ?? null),
             'Fechamento: ' . $this->formatDate($data['closure_date'] ?? null),
@@ -265,6 +287,7 @@ class TelegramMenuBuilder
 
         if ($transactions === []) {
             return implode("\n", [
+                'Transacoes',
                 'Nao encontrei transacoes para exibir.',
                 '',
                 '7 - voltar',
@@ -272,14 +295,17 @@ class TelegramMenuBuilder
             ]);
         }
 
-        $lines = ['Transacoes - pagina ' . $page . ':'];
+        $lines = [
+            'Transacoes',
+            'Pagina ' . $page,
+        ];
 
         foreach ($transactions as $index => $transaction) {
             $sign = ((int) ($transaction['type_id'] ?? 2) === 1) ? '+' : '-';
-            $lines[] = ($index + 1) . '. '
-                . ($transaction['description'] ?? 'Sem descricao')
-                . ' - ' . $sign . $this->money($transaction['value'] ?? 0)
-                . ' - ' . $this->formatDate($transaction['date'] ?? null);
+            $lines[] = '';
+            $lines[] = ($index + 1) . '. ' . ($transaction['description'] ?? 'Sem descricao');
+            $lines[] = '   Valor: ' . $sign . $this->money($transaction['value'] ?? 0);
+            $lines[] = '   Data: ' . $this->formatDate($transaction['date'] ?? null);
         }
 
         $lines[] = '';
@@ -303,7 +329,8 @@ class TelegramMenuBuilder
         return match ($state) {
             ConversationSession::STATE_CARDS_SUMMARY => implode("\n", [
                 'Opcao invalida para este submenu.',
-                'Escolha 1 a 4 para abrir um cartao, ou use:',
+                'Use uma opcao da tela atual:',
+                '1 a 4 - abrir cartao desta pagina',
                 '5 - anteriores',
                 '6 - proximos',
                 '7 - voltar',
@@ -311,6 +338,7 @@ class TelegramMenuBuilder
             ]),
             ConversationSession::STATE_CARD_DETAILS => implode("\n", [
                 'Opcao invalida para este submenu.',
+                'Use uma opcao da tela atual:',
                 '1 - ver faturas',
                 '2 - pagar fatura atual',
                 '7 - voltar',
@@ -318,7 +346,8 @@ class TelegramMenuBuilder
             ]),
             ConversationSession::STATE_CARD_INVOICES => implode("\n", [
                 'Opcao invalida para este submenu.',
-                'Escolha 1 a 4 para abrir uma fatura, ou use:',
+                'Use uma opcao da tela atual:',
+                '1 a 4 - abrir fatura desta pagina',
                 '5 - anteriores',
                 '6 - proximas',
                 '7 - voltar',
@@ -326,6 +355,7 @@ class TelegramMenuBuilder
             ]),
             ConversationSession::STATE_CARD_INVOICE_ITEMS => implode("\n", [
                 'Opcao invalida para este submenu.',
+                'Use uma opcao da tela atual:',
                 '5 - anteriores',
                 '6 - proximas',
                 '7 - voltar',
@@ -333,13 +363,13 @@ class TelegramMenuBuilder
             ]),
             ConversationSession::STATE_CARD_INVOICE_PAYMENT_METHOD => implode("\n", [
                 'Opcao invalida para este passo.',
-                'Escolha uma forma de pagamento listada ou use:',
+                'Escolha uma forma de pagamento da lista ou use:',
                 '7 - voltar',
                 '0 - cancelar',
             ]),
             ConversationSession::STATE_CARD_INVOICE_PAYMENT_CATEGORY => implode("\n", [
                 'Opcao invalida para este passo.',
-                'Escolha uma categoria listada ou use:',
+                'Escolha uma categoria da lista ou use:',
                 '7 - voltar',
                 '0 - cancelar',
             ]),
@@ -352,6 +382,7 @@ class TelegramMenuBuilder
             ]),
             ConversationSession::STATE_TRANSACTIONS_PAGE => implode("\n", [
                 'Opcao invalida para este submenu.',
+                'Use uma opcao da tela atual:',
                 '5 - anteriores',
                 '6 - proximas',
                 '7 - voltar',
