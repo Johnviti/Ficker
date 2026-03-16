@@ -107,7 +107,7 @@ class TransactionController extends Controller
         $response = ['data' => ['transactions' => []], 'most_expensive' => $mostExpensiveTransaction, 'total' => count($transactions)];
 
         foreach ($transactions as $transaction) {
-            $transaction->category_description = Category::find($transaction->category_id)?->category_description;
+            $this->appendPresentationFields($transaction);
             $response['data']['transactions'][] = $transaction;
         }
 
@@ -118,7 +118,7 @@ class TransactionController extends Controller
     {
         try {
             $transaction = Transaction::where('user_id', Auth::id())->findOrFail($id);
-            $transaction->category_description = Category::find($transaction->category_id)?->category_description;
+            $this->appendPresentationFields($transaction);
 
             return response()->json([
                 'data' => [
@@ -145,7 +145,7 @@ class TransactionController extends Controller
         $response = ['data' => ['transactions' => []], 'total' => count($transactions)];
 
         foreach ($transactions as $transaction) {
-            $transaction->category_description = Category::find($transaction->category_id)?->category_description;
+            $this->appendPresentationFields($transaction);
             $response['data']['transactions'][] = $transaction;
         }
 
@@ -162,7 +162,7 @@ class TransactionController extends Controller
         $response = ['data' => ['transactions' => []]];
 
         foreach ($transactions as $transaction) {
-            $transaction->category_description = Category::find($transaction->category_id)?->category_description;
+            $this->appendPresentationFields($transaction);
             $response['data']['transactions'][] = $transaction;
         }
 
@@ -332,6 +332,13 @@ class TransactionController extends Controller
         try {
             DB::transaction(function () use ($id) {
                 $transaction = Transaction::where('user_id', Auth::id())->findOrFail($id);
+                $installments = Installment::where('transaction_id', $id)->get();
+                $affectedPaymentTransactionIds = $installments
+                    ->pluck('payment_transaction_id')
+                    ->filter()
+                    ->unique()
+                    ->values()
+                    ->all();
 
                 Installment::where('payment_transaction_id', $id)->update([
                     'paid_at' => null,
@@ -346,6 +353,8 @@ class TransactionController extends Controller
                 Installment::where('transaction_id', $id)->delete();
 
                 $transaction->delete();
+
+                $this->reconcilePaymentTransactions($affectedPaymentTransactionIds);
             });
 
             return response()->json([
@@ -355,6 +364,45 @@ class TransactionController extends Controller
             ], 200);
         } catch (ModelNotFoundException $e) {
             return $this->errorResponse('Erro: Esta transacao nao existe.', 404);
+        }
+    }
+
+    private function appendPresentationFields(Transaction $transaction): void
+    {
+        $categoryDescription = Category::find($transaction->category_id)?->category_description;
+        $isCreditCardPurchase = (int) $transaction->type_id === 2 && (int) $transaction->payment_method_id === 4;
+        $isInvoicePayment = (int) $transaction->type_id === 2
+            && (
+                $categoryDescription === 'Pagamento de fatura'
+                || str_starts_with((string) $transaction->transaction_description, 'Pagamento fatura - ')
+            );
+
+        $transaction->category_description = $categoryDescription;
+        $transaction->is_credit_card_purchase = $isCreditCardPurchase;
+        $transaction->is_invoice_payment = $isInvoicePayment;
+        $transaction->affects_real_spending = (int) $transaction->type_id === 2 && !$isCreditCardPurchase;
+    }
+
+    private function reconcilePaymentTransactions(array $paymentTransactionIds): void
+    {
+        foreach ($paymentTransactionIds as $paymentTransactionId) {
+            $paymentTransaction = Transaction::where('user_id', Auth::id())->find($paymentTransactionId);
+
+            if (!$paymentTransaction) {
+                continue;
+            }
+
+            $remainingValue = (float) Installment::where('payment_transaction_id', $paymentTransactionId)
+                ->sum('installment_value');
+
+            if ($remainingValue <= 0) {
+                $paymentTransaction->delete();
+                continue;
+            }
+
+            $paymentTransaction->update([
+                'transaction_value' => $remainingValue,
+            ]);
         }
     }
 }
