@@ -208,7 +208,9 @@ class AnalysisService
                 'flag_description' => $card->flag?->flag_description,
                 'closure_day' => (int) $card->closure,
                 'expiration_day' => (int) $card->expiration,
-                'current_invoice_pay_day' => $currentInvoicePayDay,
+                'current_invoice_pay_day' => is_null($currentInvoicePayDay)
+                    ? null
+                    : Carbon::parse($currentInvoicePayDay, self::TIMEZONE)->toDateString(),
                 'current_invoice_closure_date' => $currentInvoiceClosureDate?->toDateString(),
                 'current_invoice_total' => $currentInvoiceTotal,
                 'open_invoice_total' => $openInvoiceTotal,
