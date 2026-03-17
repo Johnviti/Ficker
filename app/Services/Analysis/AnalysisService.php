@@ -1,0 +1,577 @@
+<?php
+
+namespace App\Services\Analysis;
+
+use App\Models\Card;
+use App\Models\Installment;
+use App\Models\Spending;
+use Carbon\Carbon;
+use Illuminate\Support\Collection;
+use Illuminate\Support\Facades\DB;
+
+class AnalysisService
+{
+    private const TIMEZONE = 'America/Sao_Paulo';
+    private const CURRENCY = 'BRL';
+
+    public function resolveFilters(array $filters): array
+    {
+        $now = Carbon::now(self::TIMEZONE);
+
+        if (!empty($filters['date_from']) && !empty($filters['date_to'])) {
+            $dateFrom = Carbon::parse($filters['date_from'], self::TIMEZONE)->startOfDay();
+            $dateTo = Carbon::parse($filters['date_to'], self::TIMEZONE)->endOfDay();
+            $periodMode = 'explicit_range';
+            $month = null;
+            $year = null;
+        } elseif (!empty($filters['month']) && !empty($filters['year'])) {
+            $dateFrom = Carbon::create((int) $filters['year'], (int) $filters['month'], 1, 0, 0, 0, self::TIMEZONE)->startOfMonth();
+            $dateTo = $dateFrom->copy()->endOfMonth();
+            $periodMode = 'month';
+            $month = (int) $filters['month'];
+            $year = (int) $filters['year'];
+        } else {
+            $dateFrom = $now->copy()->startOfMonth();
+            $dateTo = $now->copy()->endOfMonth();
+            $periodMode = 'default_current_month';
+            $month = (int) $dateFrom->month;
+            $year = (int) $dateFrom->year;
+        }
+
+        return [
+            'period_mode' => $periodMode,
+            'date_from' => $dateFrom->toDateString(),
+            'date_to' => $dateTo->toDateString(),
+            'month' => $month,
+            'year' => $year,
+            'group_by' => $filters['group_by'] ?? 'month',
+            'card_id' => isset($filters['card_id']) ? (int) $filters['card_id'] : null,
+            'category_id' => isset($filters['category_id']) ? (int) $filters['category_id'] : null,
+            'type_id' => isset($filters['type_id']) ? (int) $filters['type_id'] : null,
+        ];
+    }
+
+    public function buildSummary(int $userId, array $filters): array
+    {
+        $row = $this->baseTransactionsQuery($userId, $filters)
+            ->selectRaw('
+                COALESCE(SUM(CASE WHEN t.type_id = 1 THEN t.transaction_value ELSE 0 END), 0) as income_total,
+                COALESCE(SUM(CASE WHEN t.type_id = 2 AND (t.payment_method_id IS NULL OR t.payment_method_id != 4) THEN t.transaction_value ELSE 0 END), 0) as real_spending_total,
+                COALESCE(SUM(CASE WHEN t.type_id = 2 AND t.payment_method_id = 4 THEN t.transaction_value ELSE 0 END), 0) as credit_card_purchase_total,
+                COALESCE(SUM(CASE WHEN t.type_id = 2 AND (c.category_description = ? OR t.transaction_description LIKE ?) THEN t.transaction_value ELSE 0 END), 0) as invoice_payment_total,
+                COUNT(*) as total_transactions_count,
+                COALESCE(SUM(CASE WHEN t.type_id = 1 THEN 1 ELSE 0 END), 0) as income_transactions_count,
+                COALESCE(SUM(CASE WHEN t.type_id = 2 THEN 1 ELSE 0 END), 0) as expense_transactions_count
+            ', ['Pagamento de fatura', 'Pagamento fatura - %'])
+            ->first();
+
+        $plannedSpendingTotal = $this->plannedSpendingTotal($userId, $filters['date_from'], $filters['date_to']);
+
+        $incomeTotal = (float) ($row->income_total ?? 0);
+        $realSpendingTotal = (float) ($row->real_spending_total ?? 0);
+
+        return [
+            'period_start' => $filters['date_from'],
+            'period_end' => $filters['date_to'],
+            'income_total' => $incomeTotal,
+            'real_spending_total' => $realSpendingTotal,
+            'credit_card_purchase_total' => (float) ($row->credit_card_purchase_total ?? 0),
+            'invoice_payment_total' => (float) ($row->invoice_payment_total ?? 0),
+            'planned_spending_total' => $plannedSpendingTotal,
+            'balance_delta' => $incomeTotal - $realSpendingTotal,
+            'planned_spending_difference' => $plannedSpendingTotal - $realSpendingTotal,
+            'total_transactions_count' => (int) ($row->total_transactions_count ?? 0),
+            'income_transactions_count' => (int) ($row->income_transactions_count ?? 0),
+            'expense_transactions_count' => (int) ($row->expense_transactions_count ?? 0),
+        ];
+    }
+
+    public function buildTimeline(int $userId, array $filters): array
+    {
+        $groupBy = $filters['group_by'];
+
+        $rows = $this->baseTransactionsQuery($userId, $filters)
+            ->selectRaw($this->timelinePeriodSelect($groupBy))
+            ->selectRaw('
+                COALESCE(SUM(CASE WHEN t.type_id = 1 THEN t.transaction_value ELSE 0 END), 0) as income_total,
+                COALESCE(SUM(CASE WHEN t.type_id = 2 AND (t.payment_method_id IS NULL OR t.payment_method_id != 4) THEN t.transaction_value ELSE 0 END), 0) as real_spending_total,
+                COALESCE(SUM(CASE WHEN t.type_id = 2 AND t.payment_method_id = 4 THEN t.transaction_value ELSE 0 END), 0) as credit_card_purchase_total,
+                COALESCE(SUM(CASE WHEN t.type_id = 2 AND (c.category_description = ? OR t.transaction_description LIKE ?) THEN t.transaction_value ELSE 0 END), 0) as invoice_payment_total
+            ', ['Pagamento de fatura', 'Pagamento fatura - %'])
+            ->groupBy('period_key', 'period_start', 'period_end')
+            ->orderBy('period_start')
+            ->get();
+
+        $plannedSpendingsByMonth = $this->plannedSpendingByMonth($userId, $filters['date_from'], $filters['date_to']);
+
+        return $rows->map(function ($row) use ($groupBy, $plannedSpendingsByMonth) {
+            $plannedSpendingTotal = null;
+
+            if ($groupBy === 'month') {
+                $plannedSpendingTotal = (float) ($plannedSpendingsByMonth[$row->period_key] ?? 0);
+            }
+
+            $incomeTotal = (float) ($row->income_total ?? 0);
+            $realSpendingTotal = (float) ($row->real_spending_total ?? 0);
+
+            return [
+                'period_key' => $row->period_key,
+                'period_start' => $row->period_start,
+                'period_end' => $row->period_end,
+                'income_total' => $incomeTotal,
+                'real_spending_total' => $realSpendingTotal,
+                'credit_card_purchase_total' => (float) ($row->credit_card_purchase_total ?? 0),
+                'invoice_payment_total' => (float) ($row->invoice_payment_total ?? 0),
+                'planned_spending_total' => $plannedSpendingTotal,
+                'balance_delta' => $incomeTotal - $realSpendingTotal,
+                'planned_spending_difference' => is_null($plannedSpendingTotal)
+                    ? null
+                    : $plannedSpendingTotal - $realSpendingTotal,
+            ];
+        })->values()->all();
+    }
+
+    public function buildMeta(array $filters): array
+    {
+        return [
+            'currency' => self::CURRENCY,
+            'timezone' => self::TIMEZONE,
+            'period_mode' => $filters['period_mode'],
+        ];
+    }
+
+    public function buildCards(int $userId, array $filters): array
+    {
+        $cards = Card::query()
+            ->with('flag')
+            ->where('user_id', $userId)
+            ->when($filters['card_id'], function ($query, $cardId) {
+                $query->where('id', $cardId);
+            })
+            ->orderBy('card_description')
+            ->get();
+
+        return $cards->map(function (Card $card) use ($filters) {
+            $currentInvoicePayDay = $this->nextOpenInvoicePayDay($card->id);
+            $currentInvoiceClosureDate = $this->invoiceClosureDate($card, $currentInvoicePayDay);
+            $currentInvoiceTotal = 0.0;
+
+            if (!is_null($currentInvoicePayDay)) {
+                $currentInvoiceTotal = (float) Installment::query()
+                    ->where('card_id', $card->id)
+                    ->whereNull('paid_at')
+                    ->whereDate('pay_day', $currentInvoicePayDay)
+                    ->sum('installment_value');
+            }
+
+            $openInvoiceTotal = (float) Installment::query()
+                ->where('card_id', $card->id)
+                ->whereNull('paid_at')
+                ->sum('installment_value');
+
+            $futureCommitmentTotal = max($openInvoiceTotal - $currentInvoiceTotal, 0);
+
+            $purchasesTotalInPeriod = (float) DB::table('transactions')
+                ->where('user_id', $card->user_id)
+                ->where('card_id', $card->id)
+                ->whereBetween('date', [$filters['date_from'], $filters['date_to']])
+                ->where('type_id', 2)
+                ->where('payment_method_id', 4)
+                ->sum('transaction_value');
+
+            $purchasesCountInPeriod = (int) DB::table('transactions')
+                ->where('user_id', $card->user_id)
+                ->where('card_id', $card->id)
+                ->whereBetween('date', [$filters['date_from'], $filters['date_to']])
+                ->where('type_id', 2)
+                ->where('payment_method_id', 4)
+                ->count();
+
+            $invoicePaymentsTotalInPeriod = (float) DB::table('installments as i')
+                ->join('transactions as payment', 'payment.id', '=', 'i.payment_transaction_id')
+                ->where('i.card_id', $card->id)
+                ->whereNotNull('i.payment_transaction_id')
+                ->whereBetween('payment.date', [$filters['date_from'], $filters['date_to']])
+                ->sum('i.installment_value');
+
+            $paidInvoicesCountInPeriod = DB::table('installments as i')
+                ->join('transactions as payment', 'payment.id', '=', 'i.payment_transaction_id')
+                ->where('i.card_id', $card->id)
+                ->whereNotNull('i.payment_transaction_id')
+                ->whereBetween('payment.date', [$filters['date_from'], $filters['date_to']])
+                ->selectRaw('COUNT(DISTINCT DATE(i.pay_day)) as paid_invoices_count')
+                ->value('paid_invoices_count');
+
+            return [
+                'card_id' => $card->id,
+                'card_description' => $card->card_description,
+                'flag_description' => $card->flag?->flag_description,
+                'closure_day' => (int) $card->closure,
+                'expiration_day' => (int) $card->expiration,
+                'current_invoice_pay_day' => $currentInvoicePayDay,
+                'current_invoice_closure_date' => $currentInvoiceClosureDate?->toDateString(),
+                'current_invoice_total' => $currentInvoiceTotal,
+                'open_invoice_total' => $openInvoiceTotal,
+                'future_commitment_total' => $futureCommitmentTotal,
+                'can_pay_current_invoice' => !is_null($currentInvoicePayDay)
+                    && $currentInvoiceTotal > 0
+                    && !is_null($currentInvoiceClosureDate)
+                    && Carbon::today(self::TIMEZONE)->startOfDay()->gte($currentInvoiceClosureDate->copy()->startOfDay()),
+                'current_invoice_status' => $this->resolveInvoiceStatus($currentInvoiceTotal, $currentInvoiceClosureDate?->toDateString()),
+                'purchases_total_in_period' => $purchasesTotalInPeriod,
+                'purchases_count_in_period' => $purchasesCountInPeriod,
+                'invoice_payments_total_in_period' => $invoicePaymentsTotalInPeriod,
+                'paid_invoices_count_in_period' => (int) ($paidInvoicesCountInPeriod ?? 0),
+            ];
+        })->values()->all();
+    }
+
+    public function buildInvoices(int $userId, array $filters): array
+    {
+        $cards = Card::query()
+            ->with('flag')
+            ->where('user_id', $userId)
+            ->get()
+            ->keyBy('id');
+
+        $installments = Installment::query()
+            ->whereIn('card_id', $cards->keys())
+            ->whereBetween('pay_day', [$filters['date_from'], $filters['date_to']])
+            ->when($filters['card_id'], function ($query, $cardId) {
+                $query->where('card_id', $cardId);
+            })
+            ->orderBy('pay_day')
+            ->orderBy('card_id')
+            ->get();
+
+        $grouped = $installments->groupBy(function (Installment $installment) {
+            return $installment->card_id . '|' . Carbon::parse($installment->pay_day, self::TIMEZONE)->toDateString();
+        });
+
+        return $grouped->map(function (Collection $items, string $groupKey) use ($cards) {
+            [$cardId, $payDay] = explode('|', $groupKey);
+            /** @var Card|null $card */
+            $card = $cards->get((int) $cardId);
+            $openTotal = (float) $items->whereNull('paid_at')->sum('installment_value');
+            $invoiceTotal = (float) $items->sum('installment_value');
+            $paidAtValues = $items
+                ->pluck('paid_at')
+                ->filter()
+                ->map(fn ($value) => Carbon::parse($value, self::TIMEZONE)->format('Y-m-d H:i:s'))
+                ->unique()
+                ->values();
+            $paymentTransactionIds = $items
+                ->pluck('payment_transaction_id')
+                ->filter()
+                ->unique()
+                ->values();
+
+            return [
+                'card_id' => (int) $cardId,
+                'card_description' => $card?->card_description,
+                'flag_description' => $card?->flag?->flag_description,
+                'pay_day' => $payDay,
+                'closure_date' => $card ? $this->invoiceClosureDate($card, $payDay)?->toDateString() : null,
+                'invoice_total' => $invoiceTotal,
+                'open_total' => $openTotal,
+                'is_paid' => $openTotal <= 0,
+                'paid_at' => $paidAtValues->count() === 1 ? $paidAtValues->first() : null,
+                'payment_transaction_id' => $paymentTransactionIds->count() === 1 ? (int) $paymentTransactionIds->first() : null,
+                'installments_count' => $items->count(),
+                'status' => $this->resolveInvoiceStatus($openTotal, $card ? $this->invoiceClosureDate($card, $payDay)?->toDateString() : null),
+            ];
+        })->values()->all();
+    }
+
+    public function buildCategories(int $userId, array $filters): array
+    {
+        $rows = $this->baseTransactionsQuery($userId, $filters)
+            ->selectRaw('
+                COALESCE(t.category_id, 0) as category_id,
+                COALESCE(c.category_description, ?) as category_description,
+                COALESCE(SUM(CASE WHEN t.type_id = 1 THEN t.transaction_value ELSE 0 END), 0) as income_total,
+                COALESCE(SUM(CASE WHEN t.type_id = 2 AND (t.payment_method_id IS NULL OR t.payment_method_id != 4) THEN t.transaction_value ELSE 0 END), 0) as real_spending_total,
+                COALESCE(SUM(CASE WHEN t.type_id = 2 AND t.payment_method_id = 4 THEN t.transaction_value ELSE 0 END), 0) as credit_card_purchase_total,
+                COALESCE(SUM(CASE WHEN t.type_id = 2 AND (c.category_description = ? OR t.transaction_description LIKE ?) THEN t.transaction_value ELSE 0 END), 0) as invoice_payment_total,
+                COUNT(*) as total_transactions_count
+            ', ['Sem categoria', 'Pagamento de fatura', 'Pagamento fatura - %'])
+            ->groupBy('t.category_id', 'c.category_description')
+            ->orderByDesc(DB::raw('COALESCE(SUM(CASE WHEN t.type_id = 2 THEN t.transaction_value ELSE 0 END), 0)'))
+            ->get();
+
+        $totals = [
+            'income_total' => (float) $rows->sum('income_total'),
+            'real_spending_total' => (float) $rows->sum('real_spending_total'),
+            'credit_card_purchase_total' => (float) $rows->sum('credit_card_purchase_total'),
+            'invoice_payment_total' => (float) $rows->sum('invoice_payment_total'),
+        ];
+
+        return $rows->map(function ($row) use ($totals) {
+            $incomeTotal = (float) ($row->income_total ?? 0);
+            $realSpendingTotal = (float) ($row->real_spending_total ?? 0);
+            $creditCardPurchaseTotal = (float) ($row->credit_card_purchase_total ?? 0);
+            $invoicePaymentTotal = (float) ($row->invoice_payment_total ?? 0);
+            $expenseCompositionTotal = $realSpendingTotal + $creditCardPurchaseTotal;
+            $overallExpenseBase = $totals['real_spending_total'] + $totals['credit_card_purchase_total'];
+
+            return [
+                'category_id' => (int) ($row->category_id ?? 0),
+                'category_description' => $row->category_description,
+                'income_total' => $incomeTotal,
+                'real_spending_total' => $realSpendingTotal,
+                'credit_card_purchase_total' => $creditCardPurchaseTotal,
+                'invoice_payment_total' => $invoicePaymentTotal,
+                'expense_composition_total' => $expenseCompositionTotal,
+                'total_transactions_count' => (int) ($row->total_transactions_count ?? 0),
+                'expense_composition_percentage' => $overallExpenseBase > 0
+                    ? round(($expenseCompositionTotal / $overallExpenseBase) * 100, 2)
+                    : 0.0,
+            ];
+        })->values()->all();
+    }
+
+    public function buildComposition(int $userId, array $filters): array
+    {
+        $summary = $this->buildSummary($userId, $filters);
+
+        $incomeTotal = (float) ($summary['income_total'] ?? 0);
+        $realSpendingTotal = (float) ($summary['real_spending_total'] ?? 0);
+        $creditCardPurchaseTotal = (float) ($summary['credit_card_purchase_total'] ?? 0);
+        $invoicePaymentTotal = (float) ($summary['invoice_payment_total'] ?? 0);
+        $plannedSpendingTotal = (float) ($summary['planned_spending_total'] ?? 0);
+        $financialOutflowTotal = $realSpendingTotal + $creditCardPurchaseTotal;
+
+        return [
+            'period_start' => $summary['period_start'],
+            'period_end' => $summary['period_end'],
+            'income_total' => $incomeTotal,
+            'real_spending_total' => $realSpendingTotal,
+            'credit_card_purchase_total' => $creditCardPurchaseTotal,
+            'invoice_payment_total' => $invoicePaymentTotal,
+            'planned_spending_total' => $plannedSpendingTotal,
+            'balance_delta' => (float) ($summary['balance_delta'] ?? 0),
+            'planned_spending_difference' => (float) ($summary['planned_spending_difference'] ?? 0),
+            'financial_outflow_total' => $financialOutflowTotal,
+            'composition_percentages' => [
+                'real_spending' => $financialOutflowTotal > 0
+                    ? round(($realSpendingTotal / $financialOutflowTotal) * 100, 2)
+                    : 0.0,
+                'credit_card_purchases' => $financialOutflowTotal > 0
+                    ? round(($creditCardPurchaseTotal / $financialOutflowTotal) * 100, 2)
+                    : 0.0,
+                'invoice_payments_within_real_spending' => $realSpendingTotal > 0
+                    ? round(($invoicePaymentTotal / $realSpendingTotal) * 100, 2)
+                    : 0.0,
+                'real_spending_vs_planned' => $plannedSpendingTotal > 0
+                    ? round(($realSpendingTotal / $plannedSpendingTotal) * 100, 2)
+                    : 0.0,
+            ],
+        ];
+    }
+
+    public function buildTopExpenses(int $userId, array $filters, int $limit = 10): array
+    {
+        $limit = max(1, min($limit, 50));
+
+        $topTransactions = $this->baseTransactionsQuery($userId, $filters)
+            ->leftJoin('cards as card', 'card.id', '=', 't.card_id')
+            ->selectRaw('
+                t.id,
+                t.transaction_description,
+                t.transaction_value,
+                t.date,
+                t.type_id,
+                t.payment_method_id,
+                COALESCE(c.category_description, ?) as category_description,
+                card.card_description
+            ', ['Sem categoria'])
+            ->where('t.type_id', 2)
+            ->orderByDesc('t.transaction_value')
+            ->limit($limit)
+            ->get()
+            ->map(function ($row) {
+                $isCreditCardPurchase = (int) $row->payment_method_id === 4;
+                $isInvoicePayment = $row->category_description === 'Pagamento de fatura'
+                    || str_starts_with((string) $row->transaction_description, 'Pagamento fatura - ');
+
+                return [
+                    'transaction_id' => (int) $row->id,
+                    'transaction_description' => $row->transaction_description,
+                    'transaction_value' => (float) $row->transaction_value,
+                    'date' => $row->date,
+                    'category_description' => $row->category_description,
+                    'card_description' => $row->card_description,
+                    'is_credit_card_purchase' => $isCreditCardPurchase,
+                    'is_invoice_payment' => $isInvoicePayment,
+                    'affects_real_spending' => !$isCreditCardPurchase,
+                ];
+            })
+            ->values()
+            ->all();
+
+        $topCategories = $this->baseTransactionsQuery($userId, $filters)
+            ->selectRaw('
+                COALESCE(t.category_id, 0) as category_id,
+                COALESCE(c.category_description, ?) as category_description,
+                COALESCE(SUM(CASE WHEN t.type_id = 2 THEN t.transaction_value ELSE 0 END), 0) as total_value,
+                COUNT(*) as total_transactions_count
+            ', ['Sem categoria'])
+            ->where('t.type_id', 2)
+            ->groupBy('t.category_id', 'c.category_description')
+            ->orderByDesc('total_value')
+            ->limit($limit)
+            ->get()
+            ->map(function ($row) {
+                return [
+                    'category_id' => (int) ($row->category_id ?? 0),
+                    'category_description' => $row->category_description,
+                    'total_value' => (float) $row->total_value,
+                    'total_transactions_count' => (int) $row->total_transactions_count,
+                ];
+            })
+            ->values()
+            ->all();
+
+        $topCards = $this->baseTransactionsQuery($userId, $filters)
+            ->leftJoin('cards as card', 'card.id', '=', 't.card_id')
+            ->selectRaw('
+                t.card_id,
+                card.card_description,
+                COALESCE(SUM(CASE WHEN t.type_id = 2 AND t.payment_method_id = 4 THEN t.transaction_value ELSE 0 END), 0) as credit_card_purchase_total,
+                COALESCE(SUM(CASE WHEN t.type_id = 2 AND (t.payment_method_id IS NULL OR t.payment_method_id != 4) THEN t.transaction_value ELSE 0 END), 0) as real_spending_total,
+                COUNT(*) as total_transactions_count
+            ')
+            ->whereNotNull('t.card_id')
+            ->groupBy('t.card_id', 'card.card_description')
+            ->orderByDesc(DB::raw('COALESCE(SUM(CASE WHEN t.type_id = 2 THEN t.transaction_value ELSE 0 END), 0)'))
+            ->limit($limit)
+            ->get()
+            ->map(function ($row) {
+                return [
+                    'card_id' => (int) $row->card_id,
+                    'card_description' => $row->card_description,
+                    'credit_card_purchase_total' => (float) $row->credit_card_purchase_total,
+                    'real_spending_total' => (float) $row->real_spending_total,
+                    'total_transactions_count' => (int) $row->total_transactions_count,
+                ];
+            })
+            ->values()
+            ->all();
+
+        return [
+            'limit' => $limit,
+            'transactions' => $topTransactions,
+            'categories' => $topCategories,
+            'cards' => $topCards,
+        ];
+    }
+
+    private function baseTransactionsQuery(int $userId, array $filters)
+    {
+        return DB::table('transactions as t')
+            ->leftJoin('categories as c', 'c.id', '=', 't.category_id')
+            ->where('t.user_id', $userId)
+            ->whereBetween('t.date', [$filters['date_from'], $filters['date_to']])
+            ->when($filters['card_id'], function ($query, $cardId) {
+                $query->where('t.card_id', $cardId);
+            })
+            ->when($filters['category_id'], function ($query, $categoryId) {
+                $query->where('t.category_id', $categoryId);
+            })
+            ->when($filters['type_id'], function ($query, $typeId) {
+                $query->where('t.type_id', $typeId);
+            });
+    }
+
+    private function timelinePeriodSelect(string $groupBy): string
+    {
+        if ($groupBy === 'day') {
+            return "
+                DATE_FORMAT(t.date, '%Y-%m-%d') as period_key,
+                DATE(t.date) as period_start,
+                DATE(t.date) as period_end
+            ";
+        }
+
+        return "
+            DATE_FORMAT(t.date, '%Y-%m') as period_key,
+            DATE_FORMAT(t.date, '%Y-%m-01') as period_start,
+            LAST_DAY(t.date) as period_end
+        ";
+    }
+
+    private function plannedSpendingTotal(int $userId, string $dateFrom, string $dateTo): float
+    {
+        return array_sum($this->plannedSpendingByMonth($userId, $dateFrom, $dateTo));
+    }
+
+    private function plannedSpendingByMonth(int $userId, string $dateFrom, string $dateTo): array
+    {
+        $start = Carbon::parse($dateFrom, self::TIMEZONE)->startOfMonth();
+        $end = Carbon::parse($dateTo, self::TIMEZONE)->endOfMonth();
+
+        /** @var Collection<int, Spending> $spendings */
+        $spendings = Spending::where('user_id', $userId)
+            ->whereBetween('created_at', [$start->toDateTimeString(), $end->toDateTimeString()])
+            ->orderBy('created_at')
+            ->get();
+
+        return $spendings
+            ->groupBy(function (Spending $spending) {
+                return Carbon::parse($spending->created_at, self::TIMEZONE)->format('Y-m');
+            })
+            ->map(function (Collection $items) {
+                return (float) optional($items->last())->planned_spending;
+            })
+            ->all();
+    }
+
+    private function nextOpenInvoicePayDay(int $cardId): ?string
+    {
+        return Installment::query()
+            ->where('card_id', $cardId)
+            ->whereNull('paid_at')
+            ->orderBy('pay_day')
+            ->value('pay_day');
+    }
+
+    private function invoiceClosureDate(Card $card, ?string $invoicePayDay): ?Carbon
+    {
+        if (is_null($invoicePayDay)) {
+            return null;
+        }
+
+        $payDay = Carbon::parse($invoicePayDay, self::TIMEZONE)->startOfDay();
+        $closureDay = (int) $card->closure;
+        $expirationDay = (int) $card->expiration;
+
+        $closureMonth = $expirationDay > $closureDay
+            ? $payDay->copy()
+            : $payDay->copy()->subMonth();
+
+        return Carbon::create(
+            $closureMonth->year,
+            $closureMonth->month,
+            min($closureDay, $closureMonth->daysInMonth),
+            0,
+            0,
+            0,
+            self::TIMEZONE
+        );
+    }
+
+    private function resolveInvoiceStatus(float $openTotal, ?string $closureDate): string
+    {
+        if ($openTotal <= 0) {
+            return 'paid';
+        }
+
+        if (is_null($closureDate)) {
+            return 'no_invoice';
+        }
+
+        return Carbon::today(self::TIMEZONE)->startOfDay()->gte(Carbon::parse($closureDate, self::TIMEZONE)->startOfDay())
+            ? 'payable'
+            : 'awaiting_closure';
+    }
+}
