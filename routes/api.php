@@ -66,7 +66,9 @@ Route::middleware(['auth:sanctum'])->group(function () {
     });
 
     Route::get('/payment/methods', [PaymentController::class, 'showPaymentMethods']);
+    Route::get('/telegram/link-status', [TelegramLinkController::class, 'linkStatus']);
     Route::post('/telegram/link-code', [TelegramLinkController::class, 'generateLinkCode']);
+    Route::delete('/telegram/link', [TelegramLinkController::class, 'revokeLink']);
 });
 
 require __DIR__ . '/auth.php';

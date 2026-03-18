@@ -174,6 +174,55 @@ class AccountLinkService
         });
     }
 
+    public function getActiveLinkStatus(int $userId): array
+    {
+        $account = TelegramAccount::query()
+            ->where('user_id', $userId)
+            ->latest('id')
+            ->first();
+
+        if (!$account) {
+            return [
+                'linked' => false,
+                'account' => null,
+            ];
+        }
+
+        return [
+            'linked' => $account->isActive(),
+            'account' => [
+                'telegram_account_id' => $account->id,
+                'telegram_user_id' => (string) $account->telegram_user_id,
+                'telegram_chat_id' => (string) $account->telegram_chat_id,
+                'telegram_username' => $account->telegram_username,
+                'status' => $account->status,
+                'verified_at' => $account->verified_at?->format('Y-m-d H:i:s'),
+                'last_interaction_at' => $account->last_interaction_at?->format('Y-m-d H:i:s'),
+                'session_expires_at' => $account->session_expires_at?->format('Y-m-d H:i:s'),
+                'revoked_at' => $account->revoked_at?->format('Y-m-d H:i:s'),
+            ],
+        ];
+    }
+
+    public function revokeActiveLinks(int $userId): array
+    {
+        $activeAccounts = TelegramAccount::active()
+            ->where('user_id', $userId)
+            ->get();
+
+        $revokedAccountsCount = 0;
+
+        $activeAccounts->each(function (TelegramAccount $account) use (&$revokedAccountsCount) {
+            $account->revoke();
+            $revokedAccountsCount++;
+        });
+
+        return [
+            'revoked' => $revokedAccountsCount > 0,
+            'revoked_accounts_count' => $revokedAccountsCount,
+        ];
+    }
+
     private function generateUniqueCode(): string
     {
         do {

@@ -24,4 +24,18 @@ class TelegramLinkController extends Controller
             ]
         ], 200);
     }
+
+    public function linkStatus(): JsonResponse
+    {
+        return response()->json([
+            'data' => $this->accountLinkService->getActiveLinkStatus(Auth::id()),
+        ], 200);
+    }
+
+    public function revokeLink(): JsonResponse
+    {
+        return response()->json([
+            'data' => $this->accountLinkService->revokeActiveLinks(Auth::id()),
+        ], 200);
+    }
 }
