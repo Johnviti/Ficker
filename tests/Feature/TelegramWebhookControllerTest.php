@@ -66,7 +66,9 @@ class TelegramWebhookControllerTest extends TestCase
             ->assertOk()
             ->assertJsonPath('message', 'Webhook recebido com sucesso.');
 
-        $event = TelegramWebhookEvent::query()->first();
+        $event = TelegramWebhookEvent::query()
+            ->where('update_id', 465634999)
+            ->first();
 
         $this->assertNotNull($event);
         $this->assertSame(465634999, $event->update_id);
