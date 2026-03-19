@@ -202,4 +202,84 @@ class CardInvoicePaymentEndpointsTest extends TestCase
             'category_description' => 'Pagamento de fatura',
         ]);
     }
+
+    public function test_user_cannot_pay_invoice_that_is_already_paid(): void
+    {
+        $purchase = Transaction::factory()->create([
+            'user_id' => $this->user->id,
+            'card_id' => $this->card->id,
+            'category_id' => $this->expenseCategory->id,
+            'type_id' => 2,
+            'payment_method_id' => 4,
+            'transaction_description' => 'Compra quitada',
+            'date' => '2026-03-10',
+            'transaction_value' => 300,
+            'installments' => 1,
+        ]);
+
+        $paymentTransaction = Transaction::factory()->create([
+            'user_id' => $this->user->id,
+            'category_id' => $this->expenseCategory->id,
+            'type_id' => 2,
+            'payment_method_id' => 1,
+            'transaction_description' => 'Pagamento fatura - Cartao Principal2',
+            'date' => '2026-03-15',
+            'transaction_value' => 300,
+        ]);
+
+        Installment::create([
+            'transaction_id' => $purchase->id,
+            'installment_description' => 'Compra quitada 1/1',
+            'installment_value' => 300,
+            'card_id' => $this->card->id,
+            'pay_day' => '2026-04-03',
+            'paid_at' => '2026-03-15 18:07:19',
+            'payment_transaction_id' => $paymentTransaction->id,
+        ]);
+
+        $this->postJson("/api/cards/{$this->card->id}/invoices/2026-04-03/pay", [
+            'payment_method_id' => 1,
+        ])->assertStatus(422)
+            ->assertJsonPath('message', 'Esta fatura nao possui parcelas em aberto (ja paga ou inexistente).')
+            ->assertJsonPath('errors.invoice_pay_day.0', '2026-04-03');
+    }
+
+    public function test_user_can_pay_invoice_creating_a_new_output_category(): void
+    {
+        $purchase = Transaction::factory()->create([
+            'user_id' => $this->user->id,
+            'card_id' => $this->card->id,
+            'category_id' => $this->expenseCategory->id,
+            'type_id' => 2,
+            'payment_method_id' => 4,
+            'transaction_description' => 'Compra viagem',
+            'date' => '2026-03-10',
+            'transaction_value' => 200,
+            'installments' => 1,
+        ]);
+
+        Installment::create([
+            'transaction_id' => $purchase->id,
+            'installment_description' => 'Compra viagem 1/1',
+            'installment_value' => 200,
+            'card_id' => $this->card->id,
+            'pay_day' => '2026-04-03',
+        ]);
+
+        $response = $this->postJson("/api/cards/{$this->card->id}/invoices/2026-04-03/pay", [
+            'payment_method_id' => 2,
+            'category_id' => 0,
+            'category_description' => 'Pagamento viagem cartao',
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.invoice_value', 200)
+            ->assertJsonPath('data.payment_transaction.payment_method_id', 2);
+
+        $this->assertDatabaseHas('categories', [
+            'user_id' => $this->user->id,
+            'type_id' => 2,
+            'category_description' => 'Pagamento viagem cartao',
+        ]);
+    }
 }
