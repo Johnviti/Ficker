@@ -102,7 +102,7 @@ class CardInvoicePaymentEndpointsTest extends TestCase
             ->assertJsonPath('data.message', 'Fatura paga com sucesso.')
             ->assertJsonPath('data.card_id', $this->card->id)
             ->assertJsonPath('data.pay_day', '2026-04-03')
-            ->assertJsonPath('data.invoice_value', 650.0)
+            ->assertJsonPath('data.invoice_value', 650)
             ->assertJsonPath('data.payment_transaction.category_id', $this->expenseCategory->id)
             ->assertJsonPath('data.payment_transaction.payment_method_id', 1);
 
@@ -129,6 +129,8 @@ class CardInvoicePaymentEndpointsTest extends TestCase
 
     public function test_user_cannot_pay_invoice_before_closure_date(): void
     {
+        Carbon::setTestNow(Carbon::parse('2026-03-10 12:00:00', 'America/Sao_Paulo'));
+
         $purchase = Transaction::factory()->create([
             'user_id' => $this->user->id,
             'card_id' => $this->card->id,
@@ -146,10 +148,10 @@ class CardInvoicePaymentEndpointsTest extends TestCase
             'installment_description' => 'Compra farmacia 1/1',
             'installment_value' => 300,
             'card_id' => $this->card->id,
-            'pay_day' => '2026-03-03',
+            'pay_day' => '2026-04-03',
         ]);
 
-        $response = $this->postJson("/api/cards/{$this->card->id}/invoices/2026-03-03/pay", [
+        $response = $this->postJson("/api/cards/{$this->card->id}/invoices/2026-04-03/pay", [
             'payment_method_id' => 1,
         ]);
 
@@ -191,7 +193,7 @@ class CardInvoicePaymentEndpointsTest extends TestCase
         ]);
 
         $response->assertOk()
-            ->assertJsonPath('data.invoice_value', 200.0)
+            ->assertJsonPath('data.invoice_value', 200)
             ->assertJsonPath('data.payment_transaction.payment_method_id', 2);
 
         $this->assertDatabaseHas('categories', [
