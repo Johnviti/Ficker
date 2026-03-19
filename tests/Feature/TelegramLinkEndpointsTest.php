@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Models\Level;
 use App\Models\TelegramAccount;
+use App\Models\TelegramLinkCode;
 use App\Models\User;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Laravel\Sanctum\Sanctum;
@@ -18,6 +19,30 @@ class TelegramLinkEndpointsTest extends TestCase
         parent::setUp();
 
         Level::factory()->create(['id' => 1]);
+    }
+
+    public function test_generate_link_code_returns_code_and_invalidates_previous_active_code(): void
+    {
+        $user = User::factory()->create(['level_id' => 1]);
+
+        $previousCode = TelegramLinkCode::create([
+            'user_id' => $user->id,
+            'code' => 'FICKER-111111',
+            'expires_at' => now()->addMinutes(10),
+            'attempts' => 0,
+        ]);
+
+        Sanctum::actingAs($user);
+
+        $response = $this->postJson('/api/telegram/link-code');
+
+        $response->assertOk()
+            ->assertJsonPath('data.code', fn ($value) => is_string($value) && preg_match('/^FICKER-\d{6}$/', $value) === 1)
+            ->assertJsonPath('data.expires_at', fn ($value) => is_string($value) && $value !== '');
+
+        $previousCode->refresh();
+
+        $this->assertNotNull($previousCode->used_at);
     }
 
     public function test_link_status_returns_not_linked_when_user_has_no_telegram_account(): void

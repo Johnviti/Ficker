@@ -105,4 +105,44 @@ class AccountLinkServiceTest extends TestCase
         $this->assertSame('telegram_user_already_linked_to_other_user', $result['status']);
         $this->assertSame($userB->id, $result['user_id']);
     }
+
+    public function test_link_telegram_account_reuses_existing_account_for_same_user_and_new_chat(): void
+    {
+        $user = User::factory()->create(['level_id' => 1]);
+
+        $existingAccount = TelegramAccount::create([
+            'user_id' => $user->id,
+            'telegram_user_id' => 7777777777,
+            'telegram_chat_id' => 8888888888,
+            'telegram_username' => 'old_username',
+            'status' => TelegramAccount::STATUS_VERIFIED,
+            'verified_at' => now()->subDay(),
+            'session_expires_at' => now()->subHour(),
+        ]);
+
+        $linkCode = TelegramLinkCode::create([
+            'user_id' => $user->id,
+            'code' => 'FICKER-444444',
+            'expires_at' => now()->addMinutes(10),
+            'attempts' => 0,
+        ]);
+
+        $result = $this->service->linkTelegramAccount([
+            'telegram_user_id' => 9999999999,
+            'telegram_chat_id' => 1010101010,
+            'telegram_username' => 'new_username',
+        ], $linkCode);
+
+        $existingAccount->refresh();
+        $linkCode->refresh();
+
+        $this->assertSame('linked', $result['status']);
+        $this->assertSame($existingAccount->id, $result['telegram_account_id']);
+        $this->assertSame(9999999999, (int) $existingAccount->telegram_user_id);
+        $this->assertSame(1010101010, (int) $existingAccount->telegram_chat_id);
+        $this->assertSame('new_username', $existingAccount->telegram_username);
+        $this->assertSame(TelegramAccount::STATUS_VERIFIED, $existingAccount->status);
+        $this->assertNull($existingAccount->revoked_at);
+        $this->assertNotNull($linkCode->used_at);
+    }
 }
