@@ -121,7 +121,7 @@ class CardInvoiceReadEndpointsTest extends TestCase
         $this->getJson("/api/cards/{$this->card->id}/invoice")
             ->assertOk()
             ->assertJsonPath('data.invoice', 300)
-            ->assertJsonPath('data.pay_day', '2026-04-03');
+            ->assertJsonPath('data.pay_day', '2026-04-03 00:00:00');
     }
 
     public function test_show_invoice_installments_returns_only_open_installments_of_current_invoice(): void
@@ -164,7 +164,7 @@ class CardInvoiceReadEndpointsTest extends TestCase
 
         $this->getJson("/api/cards/{$this->card->id}/installments")
             ->assertOk()
-            ->assertJsonPath('data.pay_day', '2026-04-03')
+            ->assertJsonPath('data.pay_day', '2026-04-03 00:00:00')
             ->assertJsonCount(2, 'data.installments')
             ->assertJsonPath('data.installments.0.installment_description', 'Compra mercado 1/3')
             ->assertJsonPath('data.installments.1.installment_description', 'Compra mercado 2/3');
