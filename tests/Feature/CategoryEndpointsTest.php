@@ -123,12 +123,14 @@ class CategoryEndpointsTest extends TestCase
             'category_description' => 'Outra conta',
         ]);
 
-        $this->getJson('/api/categories/type/2')
-            ->assertOk()
-            ->assertJsonCount(1, '')
+        $response = $this->getJson('/api/categories/type/2');
+
+        $response->assertOk()
             ->assertJsonPath('0.category_description', 'Alimentacao')
             ->assertJsonPath('0.user_id', $this->user->id)
             ->assertJsonPath('0.type_id', 2);
+
+        $this->assertCount(1, $response->json());
     }
 
     public function test_show_categories_by_type_returns_validation_error_for_invalid_type(): void
