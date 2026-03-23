@@ -201,6 +201,17 @@ class AnalysisSupplementalEndpointsTest extends TestCase
 
     public function test_cards_and_invoices_endpoints_handle_multiple_cards_and_invoices(): void
     {
+        $invoicePayment = Transaction::factory()->create([
+            'id' => 500,
+            'user_id' => $this->user->id,
+            'category_id' => $this->transportCategory->id,
+            'type_id' => 2,
+            'payment_method_id' => 1,
+            'transaction_description' => 'Pagamento fatura - Cartao Principal2',
+            'date' => '2026-03-15',
+            'transaction_value' => 300,
+        ]);
+
         $purchaseA = Transaction::factory()->create([
             'id' => 110,
             'user_id' => $this->user->id,
@@ -234,7 +245,7 @@ class AnalysisSupplementalEndpointsTest extends TestCase
             'card_id' => $this->cardA->id,
             'pay_day' => '2026-04-03',
             'paid_at' => '2026-03-15 18:07:19',
-            'payment_transaction_id' => 500,
+            'payment_transaction_id' => $invoicePayment->id,
         ]);
 
         Installment::create([
