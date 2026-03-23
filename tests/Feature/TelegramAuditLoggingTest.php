@@ -93,7 +93,7 @@ class TelegramAuditLoggingTest extends TestCase
 
         $this->assertNotNull($log);
         $this->assertSame(465641000, data_get($log->metadata_json, 'update_id'));
-        $this->assertSame(false, data_get($log->metadata_json, 'reply_success'));
+        $this->assertSame(true, data_get($log->metadata_json, 'reply_success'));
 
         $session = $this->conversationSession();
         $this->assertSame(ConversationSession::STATE_CATEGORY_CREATE_TYPE, $session->state);
