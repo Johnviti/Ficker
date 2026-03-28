@@ -1,0 +1,73 @@
+services:
+  db:
+    image: mysql:5.7
+    container_name: ficker-local-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+      MYSQL_DATABASE: ${MYSQL_DATABASE}
+      MYSQL_USER: ${MYSQL_USER}
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      TZ: America/Sao_Paulo
+    ports:
+      - "${MYSQL_PORT:-3307}:3306"
+    volumes:
+      - dbdata_local:/var/lib/mysql
+
+  phpmyadmin:
+    image: phpmyadmin/phpmyadmin
+    container_name: ficker-local-phpmyadmin
+    restart: unless-stopped
+    depends_on:
+      - db
+    environment:
+      PMA_HOST: db
+      PMA_PORT: 3306
+      TZ: America/Sao_Paulo
+    ports:
+      - "${PHPMYADMIN_PORT:-8081}:80"
+
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: ficker-local-backend
+    restart: unless-stopped
+    depends_on:
+      - db
+    entrypoint: ["/bin/sh", "/app/docker/local/backend-entrypoint.sh"]
+    command: ["supervisord"]
+    ports:
+      - "${BACKEND_PORT:-8000}:80"
+    volumes:
+      - .:/app
+      - backend_vendor_local:/app/vendor
+      - backend_storage_local:/app/storage
+      - backend_bootstrap_cache_local:/app/bootstrap/cache
+
+  frontend:
+    image: node:18-alpine
+    container_name: ficker-local-frontend
+    restart: unless-stopped
+    working_dir: /app
+    depends_on:
+      - backend
+    environment:
+      NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8000/api}
+      CHOKIDAR_USEPOLLING: "true"
+    command: >
+      sh -lc "yarn install && yarn dev -H 0.0.0.0 -p 3000"
+    ports:
+      - "${FRONTEND_PORT:-3000}:3000"
+    volumes:
+      - type: bind
+        source: ${FRONTEND_LOCAL_PATH}
+        target: /app
+      - frontend_node_modules_local:/app/node_modules
+
+volumes:
+  dbdata_local:
+  backend_vendor_local:
+  backend_storage_local:
+  backend_bootstrap_cache_local:
+  frontend_node_modules_local:

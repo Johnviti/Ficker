@@ -21,7 +21,6 @@ RUN set -ex \
 # Composer
 COPY --from=composer:latest /usr/bin/composer /usr/bin/composer
 
-ENV APP_ENV=production
 ENV PHP_DATE_TIMEZONE=America/Maceio
 ENV WEB_DOCUMENT_ROOT=/app/public
 
@@ -30,15 +29,15 @@ WORKDIR /app
 # Copia a aplicação
 COPY . /app
 
-# Instala dependências da aplicação no build
-RUN composer install --no-interaction --optimize-autoloader --dev
-
-# Garante diretórios necessários do Laravel
+# Garante diretórios necessários do Laravel antes do Composer
 RUN mkdir -p /app/storage/logs \
     /app/storage/framework/cache \
     /app/storage/framework/sessions \
     /app/storage/framework/views \
     /app/bootstrap/cache
+
+# Instala dependências da aplicação no build
+RUN composer install --no-interaction --optimize-autoloader --dev
 
 # Ajusta permissões para o usuário web
 RUN chown -R application:application /app/storage /app/bootstrap/cache \

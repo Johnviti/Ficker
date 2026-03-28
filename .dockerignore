@@ -1,0 +1,10 @@
+.git
+.gitignore
+.env
+.env.compose
+.env.compose.local
+.env.testing
+node_modules
+vendor
+storage/logs
+bootstrap/cache

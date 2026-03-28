@@ -8,6 +8,7 @@
 .env
 .env.testing
 .env.compose
+.env.compose.local
 .env.backup
 .env.production
 .phpunit.result.cache

@@ -66,18 +66,13 @@ services:
     restart: unless-stopped
     depends_on:
       - db
+    entrypoint: ["/bin/sh", "/app/docker/server/backend-entrypoint.sh"]
+    command: ["supervisord"]
     environment:
-      APP_ENV: production
-      APP_DEBUG: "false"
-      APP_URL: https://${API_HOST}
-      APP_KEY: ${APP_KEY}
-      DB_CONNECTION: mysql
-      DB_HOST: db
-      DB_PORT: 3306
-      DB_DATABASE: ${MYSQL_DATABASE}
-      DB_USERNAME: ${MYSQL_USER}
-      DB_PASSWORD: ${MYSQL_PASSWORD}
       WEB_DOCUMENT_ROOT: /app/public
+      PHP_DATE_TIMEZONE: America/Sao_Paulo
+    volumes:
+      - ./.env:/app/.env
     labels:
       - traefik.enable=true
       - traefik.http.routers.ficker-api.rule=Host(`${API_HOST}`)
