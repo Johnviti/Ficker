@@ -31,6 +31,7 @@ Para ambiente local, o projeto usa este modelo:
 - `.env` como fonte principal de configuracao da aplicacao
 - `.env.compose.local` como configuracao do compose local
 - bootstrap automatico do backend via `docker/local/backend-entrypoint.sh`
+- frontend executado fora do Docker, a partir do repositorio do frontend
 
 Arquivos de referencia:
 
@@ -47,6 +48,7 @@ Voce precisa ter instalado na maquina:
 - Git
 - um clone local deste repositorio
 - um clone local do repositorio do frontend
+- Node.js e um gerenciador de pacotes compativel com o frontend, como `yarn` ou `npm`
 
 Hoje, o fluxo local tambem exige uma destas opcoes para a `APP_KEY`:
 
@@ -58,12 +60,13 @@ Hoje, o fluxo local tambem exige uma destas opcoes para a `APP_KEY`:
 1. copiar `.env.example` para `.env`
 2. ajustar o `.env` para ambiente local
 3. copiar `.env.compose.local.example` para `.env.compose.local`
-4. preencher `FRONTEND_LOCAL_PATH` no `.env.compose.local` com o caminho do clone local do repositorio do frontend
-5. subir:
+4. subir o backend local:
 
 ```powershell
 docker compose --env-file .env.compose.local -f docker-compose.local.yml up -d --build
 ```
+
+5. no repositorio do frontend, deixar a API apontando para `http://localhost:8000/api` e subir o frontend local
 
 ### Preparacao local
 
@@ -113,20 +116,21 @@ Preencha pelo menos:
 - `MYSQL_USER=ficker`
 - `MYSQL_PASSWORD=ficker123`
 - `BACKEND_PORT=8000`
-- `FRONTEND_PORT=3000`
 - `PHPMYADMIN_PORT=8081`
-- `FRONTEND_LOCAL_PATH`
-
-Exemplo no Windows:
-
-```env
-FRONTEND_LOCAL_PATH=C:/Users/seu-usuario/Documents/ficker-front
-```
 
 #### 3. Subir o ambiente local
 
 ```powershell
 docker compose --env-file .env.compose.local -f docker-compose.local.yml up -d --build
+```
+
+#### 4. Subir o frontend local
+
+No repositorio do frontend:
+
+```bash
+yarn install
+yarn dev
 ```
 
 ### Validacao inicial local
