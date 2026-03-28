@@ -133,14 +133,6 @@ yarn install
 yarn dev
 ```
 
-### Validacao inicial local
-
-Enderecos locais esperados:
-
-- backend: `http://localhost:8000`
-- frontend: `http://localhost:3000`
-- phpMyAdmin: `http://localhost:8081`
-
 ## Setup do servidor com Docker
 
 O fluxo do servidor segue o mesmo principio do local:
@@ -167,30 +159,6 @@ Para gerar `PMA_BASIC_AUTH`, voce precisa de uma destas opcoes:
 
 - `htpasswd` instalado no host
 - ou um hash bcrypt gerado por outra ferramenta confiavel, com os caracteres `$` escapados como `$$` no `.env.compose`
-
-## Fluxo rapido do servidor
-
-1. copiar `.env.compose.example` para `.env.compose`
-2. copiar `.env.example` para `.env`
-3. preencher `PMA_BASIC_AUTH`
-4. validar:
-
-```bash
-docker compose --env-file .env.compose config
-```
-
-5. subir:
-
-```bash
-docker compose --env-file .env.compose up -d --build
-```
-
-6. validar a subida:
-
-```bash
-docker compose --env-file .env.compose ps
-docker compose --env-file .env.compose logs --tail=100 backend
-```
 
 ## Preparacao do servidor
 
@@ -278,46 +246,3 @@ Se aparecer variavel vazia, faltou preencher algo no `.env.compose`.
 docker compose --env-file .env.compose up -d --build
 ```
 
-## Validacao inicial do servidor
-
-### 6. Verificar se os containers estao ativos
-
-```bash
-docker compose --env-file .env.compose ps
-```
-
-Para ver logs:
-
-```bash
-docker compose --env-file .env.compose logs --tail=100
-```
-
-Ou por servico:
-
-```bash
-docker compose --env-file .env.compose logs --tail=100 traefik
-docker compose --env-file .env.compose logs --tail=100 backend
-docker compose --env-file .env.compose logs --tail=100 phpmyadmin
-docker compose --env-file .env.compose logs --tail=100 db
-```
-
-Ao acessar o phpMyAdmin:
-
-- o navegador pedira o Basic Auth configurado no Traefik
-- dentro do phpMyAdmin, use as credenciais do MySQL
-
-
-## Checklist final
-
-- `.env.compose` criado e preenchido
-- `.env` criado e preenchido
-- `APP_KEY` presente no `.env` ou gerada automaticamente no bootstrap
-- DNS apontando para o servidor
-- portas `80`, `443` e `9090` liberadas
-- `docker compose --env-file .env.compose config` sem variaveis vazias
-- containers ativos
-- backend buildado
-- migrations executadas pelo bootstrap
-- seed base executado pelo bootstrap
-- API respondendo em HTTPS
-- phpMyAdmin acessivel em HTTPS na porta `9090`
