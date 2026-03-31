@@ -30,7 +30,12 @@ class TelegramCardInvoicePaymentFlowService
 
     public function start(ConversationSession $session, int $userId): array
     {
-        $cardContext = $this->cardContext($session);
+        $selectedCardId = (int) $session->context(ConversationSession::CONTEXT_SELECTED_CARD_ID, 0);
+        $latestCardDetails = $selectedCardId > 0
+            ? $this->cardsQueryService->getCardDetails($userId, $selectedCardId)
+            : [];
+
+        $cardContext = $this->cardContextFromQueryResult($session, $latestCardDetails);
 
         if (($cardContext['selected_card_id'] ?? 0) <= 0 || empty($cardContext['selected_card_pay_day'])) {
             return [
@@ -316,6 +321,18 @@ class TelegramCardInvoicePaymentFlowService
             'selected_card_pay_day' => $session->context(ConversationSession::CONTEXT_SELECTED_CARD_PAY_DAY),
             'selected_card_closure_date' => $session->context(ConversationSession::CONTEXT_SELECTED_CARD_CLOSURE_DATE),
             'selected_card_invoice_total' => (float) $session->context(ConversationSession::CONTEXT_SELECTED_CARD_INVOICE_TOTAL, 0),
+            'parent_page' => (int) $session->context(ConversationSession::CONTEXT_PARENT_PAGE, 1),
+        ];
+    }
+
+    private function cardContextFromQueryResult(ConversationSession $session, array $queryResult): array
+    {
+        return [
+            'selected_card_id' => (int) ($queryResult['card_id'] ?? $session->context(ConversationSession::CONTEXT_SELECTED_CARD_ID, 0)),
+            'selected_card_description' => (string) ($queryResult['card_description'] ?? $session->context(ConversationSession::CONTEXT_SELECTED_CARD_DESCRIPTION, 'Cartao')),
+            'selected_card_pay_day' => $queryResult['pay_day'] ?? $session->context(ConversationSession::CONTEXT_SELECTED_CARD_PAY_DAY),
+            'selected_card_closure_date' => $queryResult['closure_date'] ?? $session->context(ConversationSession::CONTEXT_SELECTED_CARD_CLOSURE_DATE),
+            'selected_card_invoice_total' => (float) ($queryResult['open_total'] ?? $queryResult['invoice_total'] ?? $session->context(ConversationSession::CONTEXT_SELECTED_CARD_INVOICE_TOTAL, 0)),
             'parent_page' => (int) $session->context(ConversationSession::CONTEXT_PARENT_PAGE, 1),
         ];
     }
