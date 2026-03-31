@@ -771,7 +771,7 @@ class ProcessTelegramMessageJob implements ShouldQueue
             ConversationSession::CONTEXT_SELECTED_CARD_DESCRIPTION => (string) ($queryResult['card_description'] ?? 'Cartao'),
             ConversationSession::CONTEXT_SELECTED_CARD_PAY_DAY => $queryResult['pay_day'] ?? null,
             ConversationSession::CONTEXT_SELECTED_CARD_CLOSURE_DATE => $queryResult['closure_date'] ?? null,
-            ConversationSession::CONTEXT_SELECTED_CARD_INVOICE_TOTAL => (float) ($queryResult['open_total'] ?? $queryResult['invoice_total'] ?? 0),
+            ConversationSession::CONTEXT_SELECTED_CARD_INVOICE_TOTAL => (float) ($queryResult['invoice_total'] ?? $queryResult['open_total'] ?? 0),
             ConversationSession::CONTEXT_PARENT_PAGE => (int) $conversationSession->context(ConversationSession::CONTEXT_PARENT_PAGE, $conversationSession->context(ConversationSession::CONTEXT_PAGE, 1)),
         ], $userId, $rememberPrevious);
 

@@ -281,7 +281,7 @@ class TelegramCardInvoicePaymentFlowService
             ConversationSession::CONTEXT_SELECTED_CARD_DESCRIPTION => $session->context(ConversationSession::CONTEXT_SELECTED_CARD_DESCRIPTION),
             ConversationSession::CONTEXT_SELECTED_CARD_PAY_DAY => $queryResult['pay_day'] ?? $session->context(ConversationSession::CONTEXT_SELECTED_CARD_PAY_DAY),
             ConversationSession::CONTEXT_SELECTED_CARD_CLOSURE_DATE => $queryResult['closure_date'] ?? $session->context(ConversationSession::CONTEXT_SELECTED_CARD_CLOSURE_DATE),
-            ConversationSession::CONTEXT_SELECTED_CARD_INVOICE_TOTAL => $queryResult['open_total'] ?? $queryResult['invoice_total'] ?? $session->context(ConversationSession::CONTEXT_SELECTED_CARD_INVOICE_TOTAL),
+            ConversationSession::CONTEXT_SELECTED_CARD_INVOICE_TOTAL => $queryResult['invoice_total'] ?? $queryResult['open_total'] ?? $session->context(ConversationSession::CONTEXT_SELECTED_CARD_INVOICE_TOTAL),
             ConversationSession::CONTEXT_PARENT_PAGE => $session->context(ConversationSession::CONTEXT_PARENT_PAGE, 1),
         ], $userId);
     }
@@ -332,7 +332,7 @@ class TelegramCardInvoicePaymentFlowService
             'selected_card_description' => (string) ($queryResult['card_description'] ?? $session->context(ConversationSession::CONTEXT_SELECTED_CARD_DESCRIPTION, 'Cartao')),
             'selected_card_pay_day' => $queryResult['pay_day'] ?? $session->context(ConversationSession::CONTEXT_SELECTED_CARD_PAY_DAY),
             'selected_card_closure_date' => $queryResult['closure_date'] ?? $session->context(ConversationSession::CONTEXT_SELECTED_CARD_CLOSURE_DATE),
-            'selected_card_invoice_total' => (float) ($queryResult['open_total'] ?? $queryResult['invoice_total'] ?? $session->context(ConversationSession::CONTEXT_SELECTED_CARD_INVOICE_TOTAL, 0)),
+            'selected_card_invoice_total' => (float) ($queryResult['invoice_total'] ?? $queryResult['open_total'] ?? $session->context(ConversationSession::CONTEXT_SELECTED_CARD_INVOICE_TOTAL, 0)),
             'parent_page' => (int) $session->context(ConversationSession::CONTEXT_PARENT_PAGE, 1),
         ];
     }
