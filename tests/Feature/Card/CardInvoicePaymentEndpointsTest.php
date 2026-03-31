@@ -103,6 +103,11 @@ class CardInvoicePaymentEndpointsTest extends TestCase
             ->assertJsonPath('data.card_id', $this->card->id)
             ->assertJsonPath('data.pay_day', '2026-04-03')
             ->assertJsonPath('data.invoice_value', 650)
+            ->assertJsonPath('data.amount_paid', 650)
+            ->assertJsonPath('data.invoice_total', 650)
+            ->assertJsonPath('data.paid_total', 650)
+            ->assertJsonPath('data.open_total', 0)
+            ->assertJsonPath('data.status', 'paga')
             ->assertJsonPath('data.payment_transaction.category_id', $this->expenseCategory->id)
             ->assertJsonPath('data.payment_transaction.payment_method_id', 1);
 
@@ -125,6 +130,13 @@ class CardInvoicePaymentEndpointsTest extends TestCase
                 ->where('payment_transaction_id', $paymentTransactionId)
                 ->count()
         );
+
+        $this->assertDatabaseHas('card_invoice_payments', [
+            'card_id' => $this->card->id,
+            'pay_day' => '2026-04-03',
+            'payment_transaction_id' => $paymentTransactionId,
+            'amount_paid' => 650.00,
+        ]);
     }
 
     public function test_user_cannot_pay_invoice_before_closure_date(): void
@@ -194,6 +206,7 @@ class CardInvoicePaymentEndpointsTest extends TestCase
 
         $response->assertOk()
             ->assertJsonPath('data.invoice_value', 200)
+            ->assertJsonPath('data.amount_paid', 200)
             ->assertJsonPath('data.payment_transaction.payment_method_id', 2);
 
         $this->assertDatabaseHas('categories', [
@@ -274,6 +287,7 @@ class CardInvoicePaymentEndpointsTest extends TestCase
 
         $response->assertOk()
             ->assertJsonPath('data.invoice_value', 200)
+            ->assertJsonPath('data.amount_paid', 200)
             ->assertJsonPath('data.payment_transaction.payment_method_id', 2);
 
         $this->assertDatabaseHas('categories', [
@@ -281,5 +295,114 @@ class CardInvoicePaymentEndpointsTest extends TestCase
             'type_id' => 2,
             'category_description' => 'Pagamento viagem cartao',
         ]);
+    }
+
+    public function test_user_can_pay_invoice_partially_and_leave_open_balance(): void
+    {
+        $purchase = Transaction::factory()->create([
+            'user_id' => $this->user->id,
+            'card_id' => $this->card->id,
+            'category_id' => $this->expenseCategory->id,
+            'type_id' => 2,
+            'payment_method_id' => 4,
+            'transaction_description' => 'Compra parcial',
+            'date' => '2026-03-10',
+            'transaction_value' => 500,
+            'installments' => 2,
+        ]);
+
+        Installment::create([
+            'transaction_id' => $purchase->id,
+            'installment_description' => 'Compra parcial 1/2',
+            'installment_value' => 200,
+            'card_id' => $this->card->id,
+            'pay_day' => '2026-04-03',
+        ]);
+
+        Installment::create([
+            'transaction_id' => $purchase->id,
+            'installment_description' => 'Compra parcial 2/2',
+            'installment_value' => 300,
+            'card_id' => $this->card->id,
+            'pay_day' => '2026-04-03',
+        ]);
+
+        $response = $this->postJson("/api/cards/{$this->card->id}/invoices/2026-04-03/pay", [
+            'payment_method_id' => 1,
+            'category_id' => $this->expenseCategory->id,
+            'amount_paid' => 200,
+            'date' => '2026-03-20',
+        ]);
+
+        $response->assertOk()
+            ->assertJsonPath('data.invoice_value', 200)
+            ->assertJsonPath('data.amount_paid', 200)
+            ->assertJsonPath('data.invoice_total', 500)
+            ->assertJsonPath('data.paid_total', 200)
+            ->assertJsonPath('data.open_total', 300)
+            ->assertJsonPath('data.status', 'parcialmente_paga');
+
+        $paymentTransactionId = $response->json('data.payment_transaction.id');
+
+        $this->assertDatabaseHas('transactions', [
+            'id' => $paymentTransactionId,
+            'transaction_value' => 200,
+            'transaction_description' => 'Pagamento fatura - Cartao Principal2',
+        ]);
+
+        $this->assertDatabaseHas('card_invoice_payments', [
+            'card_id' => $this->card->id,
+            'pay_day' => '2026-04-03',
+            'payment_transaction_id' => $paymentTransactionId,
+            'amount_paid' => 200.00,
+        ]);
+
+        $this->assertSame(
+            0,
+            Installment::query()
+                ->where('card_id', $this->card->id)
+                ->whereDate('pay_day', '2026-04-03')
+                ->whereNotNull('paid_at')
+                ->count()
+        );
+    }
+
+    public function test_user_cannot_pay_more_than_open_balance(): void
+    {
+        $purchase = Transaction::factory()->create([
+            'user_id' => $this->user->id,
+            'card_id' => $this->card->id,
+            'category_id' => $this->expenseCategory->id,
+            'type_id' => 2,
+            'payment_method_id' => 4,
+            'transaction_description' => 'Compra parcial',
+            'date' => '2026-03-10',
+            'transaction_value' => 500,
+            'installments' => 2,
+        ]);
+
+        Installment::create([
+            'transaction_id' => $purchase->id,
+            'installment_description' => 'Compra parcial 1/2',
+            'installment_value' => 200,
+            'card_id' => $this->card->id,
+            'pay_day' => '2026-04-03',
+        ]);
+
+        Installment::create([
+            'transaction_id' => $purchase->id,
+            'installment_description' => 'Compra parcial 2/2',
+            'installment_value' => 300,
+            'card_id' => $this->card->id,
+            'pay_day' => '2026-04-03',
+        ]);
+
+        $this->postJson("/api/cards/{$this->card->id}/invoices/2026-04-03/pay", [
+            'payment_method_id' => 1,
+            'category_id' => $this->expenseCategory->id,
+            'amount_paid' => 600,
+            'date' => '2026-03-20',
+        ])->assertStatus(422)
+            ->assertJsonPath('errors.amount_paid.0', 'O valor pago deve ser maior que zero e menor ou igual ao saldo em aberto da fatura.');
     }
 }

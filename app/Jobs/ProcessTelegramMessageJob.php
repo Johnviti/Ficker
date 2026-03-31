@@ -771,7 +771,7 @@ class ProcessTelegramMessageJob implements ShouldQueue
             ConversationSession::CONTEXT_SELECTED_CARD_DESCRIPTION => (string) ($queryResult['card_description'] ?? 'Cartao'),
             ConversationSession::CONTEXT_SELECTED_CARD_PAY_DAY => $queryResult['pay_day'] ?? null,
             ConversationSession::CONTEXT_SELECTED_CARD_CLOSURE_DATE => $queryResult['closure_date'] ?? null,
-            ConversationSession::CONTEXT_SELECTED_CARD_INVOICE_TOTAL => (float) ($queryResult['invoice_total'] ?? 0),
+            ConversationSession::CONTEXT_SELECTED_CARD_INVOICE_TOTAL => (float) ($queryResult['open_total'] ?? $queryResult['invoice_total'] ?? 0),
             ConversationSession::CONTEXT_PARENT_PAGE => (int) $conversationSession->context(ConversationSession::CONTEXT_PARENT_PAGE, $conversationSession->context(ConversationSession::CONTEXT_PAGE, 1)),
         ], $userId, $rememberPrevious);
 
@@ -830,7 +830,7 @@ class ProcessTelegramMessageJob implements ShouldQueue
             'selected_card_description' => $selectedCardDescription,
             'selected_invoice_pay_day' => $queryResult['pay_day'] ?? null,
             'selected_invoice_closure_date' => $queryResult['closure_date'] ?? null,
-            'selected_invoice_total' => (float) ($queryResult['invoice_total'] ?? 0),
+            'selected_invoice_total' => (float) ($queryResult['open_total'] ?? $queryResult['invoice_total'] ?? 0),
             'page' => $page,
             'per_page' => (int) ($queryResult['per_page'] ?? 5),
             'parent_page' => (int) $conversationSession->context('page', 1),

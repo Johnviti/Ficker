@@ -276,7 +276,7 @@ class TelegramCardInvoicePaymentFlowService
             ConversationSession::CONTEXT_SELECTED_CARD_DESCRIPTION => $session->context(ConversationSession::CONTEXT_SELECTED_CARD_DESCRIPTION),
             ConversationSession::CONTEXT_SELECTED_CARD_PAY_DAY => $queryResult['pay_day'] ?? $session->context(ConversationSession::CONTEXT_SELECTED_CARD_PAY_DAY),
             ConversationSession::CONTEXT_SELECTED_CARD_CLOSURE_DATE => $queryResult['closure_date'] ?? $session->context(ConversationSession::CONTEXT_SELECTED_CARD_CLOSURE_DATE),
-            ConversationSession::CONTEXT_SELECTED_CARD_INVOICE_TOTAL => $queryResult['invoice_total'] ?? $session->context(ConversationSession::CONTEXT_SELECTED_CARD_INVOICE_TOTAL),
+            ConversationSession::CONTEXT_SELECTED_CARD_INVOICE_TOTAL => $queryResult['open_total'] ?? $queryResult['invoice_total'] ?? $session->context(ConversationSession::CONTEXT_SELECTED_CARD_INVOICE_TOTAL),
             ConversationSession::CONTEXT_PARENT_PAGE => $session->context(ConversationSession::CONTEXT_PARENT_PAGE, 1),
         ], $userId);
     }

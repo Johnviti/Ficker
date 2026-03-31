@@ -3,12 +3,16 @@
 namespace App\Services\Telegram;
 
 use App\Models\Card;
-use App\Models\Installment;
 use App\Models\Spending;
 use App\Models\Transaction;
 
 class TelegramFinancialQueryService
 {
+    public function __construct(
+        private readonly \App\Services\Cards\CardInvoiceSummaryService $cardInvoiceSummaryService
+    ) {
+    }
+
     public function getBalance(int $userId): array
     {
         $month = now()->month;
@@ -47,40 +51,40 @@ class TelegramFinancialQueryService
 
     public function getNextInvoice(int $userId): array
     {
-        $nextInstallment = Installment::query()
-            ->select(['card_id', 'pay_day'])
-            ->whereNull('paid_at')
-            ->whereHas('transaction', function ($query) use ($userId) {
-                $query->where('user_id', $userId);
+        $cards = Card::query()
+            ->where('user_id', $userId)
+            ->orderBy('card_description')
+            ->get();
+
+        $nextInvoice = $cards
+            ->map(function (Card $card) {
+                $summary = $this->cardInvoiceSummaryService->currentInvoice($card);
+
+                return [
+                    'card' => $card,
+                    'pay_day' => $summary['pay_day'] ?? null,
+                    'open_total' => (float) ($summary['open_total'] ?? 0),
+                ];
             })
-            ->orderBy('pay_day', 'asc')
+            ->filter(fn (array $item) => !is_null($item['pay_day']) && $item['open_total'] > 0)
+            ->sortBy(fn (array $item) => (string) $item['pay_day'])
             ->first();
 
-        if (!$nextInstallment) {
+        if (!$nextInvoice) {
             return [
                 'has_open_invoice' => false,
             ];
         }
 
-        $card = Card::where('user_id', $userId)->find($nextInstallment->card_id);
-
-        if (!$card) {
-            return [
-                'has_open_invoice' => false,
-            ];
-        }
-
-        $total = (float) Installment::where('card_id', $card->id)
-            ->whereNull('paid_at')
-            ->whereDate('pay_day', $nextInstallment->pay_day)
-            ->sum('installment_value');
+        /** @var Card $card */
+        $card = $nextInvoice['card'];
 
         return [
             'has_open_invoice' => true,
             'card_id' => $card->id,
             'card_description' => $card->card_description,
-            'pay_day' => $nextInstallment->pay_day->toDateString(),
-            'total' => $total,
+            'pay_day' => $nextInvoice['pay_day'],
+            'total' => $nextInvoice['open_total'],
         ];
     }
 

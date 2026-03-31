@@ -93,7 +93,9 @@ class CardInvoiceReadEndpointsTest extends TestCase
         $this->getJson("/api/cards/{$this->card->id}/invoice")
             ->assertOk()
             ->assertJsonPath('data.invoice', 0)
-            ->assertJsonPath('data.pay_day', null);
+            ->assertJsonPath('data.pay_day', null)
+            ->assertJsonPath('data.open_total', 0)
+            ->assertJsonPath('data.status', 'no_invoice');
     }
 
     public function test_show_card_invoice_returns_current_open_invoice_and_pay_day(): void
@@ -121,7 +123,10 @@ class CardInvoiceReadEndpointsTest extends TestCase
         $this->getJson("/api/cards/{$this->card->id}/invoice")
             ->assertOk()
             ->assertJsonPath('data.invoice', 300)
-            ->assertJsonPath('data.pay_day', '2026-04-03 00:00:00');
+            ->assertJsonPath('data.pay_day', '2026-04-03')
+            ->assertJsonPath('data.total', 300)
+            ->assertJsonPath('data.paid_total', 0)
+            ->assertJsonPath('data.open_total', 300);
     }
 
     public function test_show_invoice_installments_returns_only_open_installments_of_current_invoice(): void
@@ -218,11 +223,59 @@ class CardInvoiceReadEndpointsTest extends TestCase
             ->assertJsonCount(2, 'data.invoices')
             ->assertJsonPath('data.invoices.0.pay_day', '2026-04-03')
             ->assertJsonPath('data.invoices.0.total', 300)
+            ->assertJsonPath('data.invoices.0.paid_total', 300)
             ->assertJsonPath('data.invoices.0.open_total', 0)
             ->assertJsonPath('data.invoices.0.is_paid', true)
             ->assertJsonPath('data.invoices.1.pay_day', '2026-05-03')
             ->assertJsonPath('data.invoices.1.total', 350)
+            ->assertJsonPath('data.invoices.1.paid_total', 0)
             ->assertJsonPath('data.invoices.1.open_total', 350)
             ->assertJsonPath('data.invoices.1.is_paid', false);
+    }
+
+    public function test_show_card_invoice_returns_partial_payment_summary(): void
+    {
+        $purchase = Transaction::factory()->create([
+            'user_id' => $this->user->id,
+            'card_id' => $this->card->id,
+            'category_id' => $this->expenseCategory->id,
+            'type_id' => 2,
+            'payment_method_id' => 4,
+            'transaction_description' => 'Compra parcial',
+            'date' => '2026-03-10',
+            'transaction_value' => 500,
+            'installments' => 2,
+        ]);
+
+        Installment::create([
+            'transaction_id' => $purchase->id,
+            'installment_description' => 'Compra parcial 1/2',
+            'installment_value' => 200,
+            'card_id' => $this->card->id,
+            'pay_day' => '2026-04-03',
+        ]);
+
+        Installment::create([
+            'transaction_id' => $purchase->id,
+            'installment_description' => 'Compra parcial 2/2',
+            'installment_value' => 300,
+            'card_id' => $this->card->id,
+            'pay_day' => '2026-04-03',
+        ]);
+
+        $this->postJson("/api/cards/{$this->card->id}/invoices/2026-04-03/pay", [
+            'payment_method_id' => 1,
+            'category_id' => $this->expenseCategory->id,
+            'amount_paid' => 200,
+            'date' => '2026-03-20',
+        ])->assertOk();
+
+        $this->getJson("/api/cards/{$this->card->id}/invoice")
+            ->assertOk()
+            ->assertJsonPath('data.pay_day', '2026-04-03')
+            ->assertJsonPath('data.total', 500)
+            ->assertJsonPath('data.paid_total', 200)
+            ->assertJsonPath('data.open_total', 300)
+            ->assertJsonPath('data.status', 'parcialmente_paga');
     }
 }

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Exceptions\TransactionCreationException;
 use App\Models\Card;
+use App\Models\CardInvoicePayment;
 use App\Models\Category;
 use App\Models\Installment;
 use App\Models\Transaction;
@@ -340,10 +341,41 @@ class TransactionController extends Controller
                     ->values()
                     ->all();
 
+                $invoicePaymentTransactionIds = CardInvoicePayment::query()
+                    ->where('payment_transaction_id', $id)
+                    ->pluck('payment_transaction_id')
+                    ->filter()
+                    ->unique()
+                    ->values()
+                    ->all();
+
+                $installmentInvoicePaymentTransactionIds = CardInvoicePayment::query()
+                    ->where(function ($query) use ($installments) {
+                        foreach ($installments as $installment) {
+                            $query->orWhere(function ($subQuery) use ($installment) {
+                                $subQuery->where('card_id', $installment->card_id)
+                                    ->whereDate('pay_day', $installment->pay_day);
+                            });
+                        }
+                    })
+                    ->pluck('payment_transaction_id')
+                    ->filter()
+                    ->unique()
+                    ->values()
+                    ->all();
+
+                $affectedPaymentTransactionIds = collect([
+                    ...$affectedPaymentTransactionIds,
+                    ...$invoicePaymentTransactionIds,
+                    ...$installmentInvoicePaymentTransactionIds,
+                ])->filter()->unique()->values()->all();
+
                 Installment::where('payment_transaction_id', $id)->update([
                     'paid_at' => null,
                     'payment_transaction_id' => null
                 ]);
+
+                CardInvoicePayment::where('payment_transaction_id', $id)->delete();
 
                 Installment::where('transaction_id', $id)->update([
                     'paid_at' => null,
@@ -392,8 +424,15 @@ class TransactionController extends Controller
                 continue;
             }
 
-            $remainingValue = (float) Installment::where('payment_transaction_id', $paymentTransactionId)
-                ->sum('installment_value');
+            $this->reconcileCardInvoicePaymentRows($paymentTransactionId);
+
+            $remainingValue = (float) CardInvoicePayment::where('payment_transaction_id', $paymentTransactionId)
+                ->sum('amount_paid');
+
+            if ($remainingValue <= 0) {
+                $remainingValue = (float) Installment::where('payment_transaction_id', $paymentTransactionId)
+                    ->sum('installment_value');
+            }
 
             if ($remainingValue <= 0) {
                 $paymentTransaction->delete();
@@ -403,6 +442,102 @@ class TransactionController extends Controller
             $paymentTransaction->update([
                 'transaction_value' => $remainingValue,
             ]);
+        }
+    }
+
+    private function reconcileCardInvoicePaymentRows(int $paymentTransactionId): void
+    {
+        $invoicePayments = CardInvoicePayment::query()
+            ->where('payment_transaction_id', $paymentTransactionId)
+            ->get()
+            ->groupBy(fn (CardInvoicePayment $payment) => $payment->card_id . '|' . Carbon::parse($payment->pay_day)->toDateString());
+
+        foreach ($invoicePayments as $groupKey => $payments) {
+            [$cardId, $payDay] = explode('|', $groupKey);
+
+            $remainingInvoiceTotal = (float) Installment::query()
+                ->where('card_id', (int) $cardId)
+                ->whereDate('pay_day', $payDay)
+                ->sum('installment_value');
+
+            if ($remainingInvoiceTotal <= 0) {
+                CardInvoicePayment::query()
+                    ->where('card_id', (int) $cardId)
+                    ->whereDate('pay_day', $payDay)
+                    ->delete();
+
+                continue;
+            }
+
+            $allPaymentsForInvoice = CardInvoicePayment::query()
+                ->where('card_id', (int) $cardId)
+                ->whereDate('pay_day', $payDay)
+                ->orderBy('paid_at')
+                ->orderBy('id')
+                ->get();
+
+            $totalPaid = (float) $allPaymentsForInvoice->sum('amount_paid');
+            $excess = max($totalPaid - $remainingInvoiceTotal, 0.0);
+
+            if ($excess <= 0) {
+                continue;
+            }
+
+            foreach ($allPaymentsForInvoice->sortByDesc('id') as $invoicePayment) {
+                if ($excess <= 0) {
+                    break;
+                }
+
+                $currentAmount = (float) $invoicePayment->amount_paid;
+
+                if ($currentAmount <= $excess) {
+                    $excess -= $currentAmount;
+                    $invoicePayment->delete();
+                    continue;
+                }
+
+                $invoicePayment->update([
+                    'amount_paid' => round($currentAmount - $excess, 2),
+                ]);
+
+                $excess = 0;
+            }
+
+            $refreshedPayments = CardInvoicePayment::query()
+                ->where('card_id', (int) $cardId)
+                ->whereDate('pay_day', $payDay)
+                ->orderBy('paid_at')
+                ->orderBy('id')
+                ->get();
+
+            $updatedPaidTotal = (float) $refreshedPayments->sum('amount_paid');
+            $isFullyCovered = round($updatedPaidTotal, 2) >= round($remainingInvoiceTotal, 2);
+            $singlePaymentTransactionId = null;
+
+            if ($refreshedPayments->count() === 1 && round($updatedPaidTotal, 2) === round($remainingInvoiceTotal, 2)) {
+                $singlePaymentTransactionId = (int) $refreshedPayments->first()->payment_transaction_id;
+            }
+
+            if ($isFullyCovered) {
+                Installment::query()
+                    ->where('card_id', (int) $cardId)
+                    ->whereDate('pay_day', $payDay)
+                    ->whereNull('paid_at')
+                    ->update([
+                        'paid_at' => $refreshedPayments->pluck('paid_at')->filter()->max() ?? now(),
+                        'payment_transaction_id' => $singlePaymentTransactionId,
+                    ]);
+
+                continue;
+            }
+
+            Installment::query()
+                ->where('card_id', (int) $cardId)
+                ->whereDate('pay_day', $payDay)
+                ->update([
+                    'paid_at' => null,
+                    'payment_transaction_id' => null,
+                ]);
         }
     }
 }

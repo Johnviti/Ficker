@@ -4,6 +4,7 @@ namespace Tests\Feature;
 
 use App\Jobs\ProcessTelegramMessageJob;
 use App\Models\Card;
+use App\Models\CardInvoicePayment;
 use App\Models\Category;
 use App\Models\ConversationSession;
 use App\Models\Flag;
@@ -153,6 +154,13 @@ class TelegramInvoicePaymentFlowTest extends TestCase
             'payment_method_id' => 1,
             'transaction_description' => 'Pagamento fatura - ' . $this->card->card_description,
             'transaction_value' => 300,
+        ]);
+
+        $this->assertDatabaseHas('card_invoice_payments', [
+            'card_id' => $this->card->id,
+            'pay_day' => '2026-03-10',
+            'payment_transaction_id' => $paymentTransactionId,
+            'amount_paid' => 300.00,
         ]);
     }
 

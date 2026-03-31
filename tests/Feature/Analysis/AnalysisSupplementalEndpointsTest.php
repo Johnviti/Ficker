@@ -3,6 +3,7 @@
 namespace Tests\Feature\Analysis;
 
 use App\Models\Card;
+use App\Models\CardInvoicePayment;
 use App\Models\Category;
 use App\Models\Flag;
 use App\Models\Installment;
@@ -246,6 +247,16 @@ class AnalysisSupplementalEndpointsTest extends TestCase
             'pay_day' => '2026-04-03',
             'paid_at' => '2026-03-15 18:07:19',
             'payment_transaction_id' => $invoicePayment->id,
+        ]);
+
+        CardInvoicePayment::create([
+            'card_id' => $this->cardA->id,
+            'pay_day' => '2026-04-03',
+            'payment_transaction_id' => $invoicePayment->id,
+            'payment_method_id' => 1,
+            'category_id' => $this->transportCategory->id,
+            'amount_paid' => 300,
+            'paid_at' => '2026-03-15 18:07:19',
         ]);
 
         Installment::create([

@@ -9,6 +9,11 @@ use Illuminate\Database\Eloquent\Collection;
 
 class TelegramCardsQueryService
 {
+    public function __construct(
+        private readonly \App\Services\Cards\CardInvoiceSummaryService $cardInvoiceSummaryService
+    ) {
+    }
+
     public function getCardsSummary(int $userId, int $page = 1, int $perPage = 4): array
     {
         $cards = Card::query()
@@ -53,30 +58,19 @@ class TelegramCardsQueryService
             ->where('user_id', $userId)
             ->findOrFail($cardId);
 
-        $installments = Installment::query()
-            ->where('card_id', $card->id)
-            ->orderBy('pay_day', 'asc')
-            ->get();
-
-        $grouped = $installments
-            ->groupBy(fn (Installment $installment) => Carbon::parse($installment->pay_day)->toDateString())
-            ->map(function (Collection $items, string $payDay) use ($card) {
-                $openTotal = (float) $items->whereNull('paid_at')->sum('installment_value');
-                $total = (float) $items->sum('installment_value');
-                $closureDate = $this->invoiceClosureDate($card, $payDay)?->toDateString();
-                $paidAt = $items->max('paid_at');
-
+        $grouped = $this->cardInvoiceSummaryService
+            ->summariesForCard($card)
+            ->map(function (array $summary) {
                 return [
-                    'pay_day' => $payDay,
-                    'closure_date' => $closureDate,
-                    'total' => $total,
-                    'open_total' => $openTotal,
-                    'installments_count' => $items->count(),
-                    'is_paid' => $openTotal <= 0,
-                    'paid_at' => $paidAt
-                        ? Carbon::parse($paidAt)->timezone('America/Sao_Paulo')->format('Y-m-d H:i:s')
-                        : null,
-                    'status' => $this->resolveInvoiceStatus($openTotal, $closureDate),
+                    'pay_day' => $summary['pay_day'],
+                    'closure_date' => $summary['closure_date'],
+                    'total' => $summary['total'],
+                    'paid_total' => $summary['paid_total'],
+                    'open_total' => $summary['open_total'],
+                    'installments_count' => $summary['installments_count'],
+                    'is_paid' => $summary['is_paid'],
+                    'paid_at' => $summary['paid_at'],
+                    'status' => $this->translateInvoiceStatus($summary['status'] ?? 'no_invoice'),
                 ];
             })
             ->values();
@@ -122,13 +116,7 @@ class TelegramCardsQueryService
         $invoicePayDay = blank($payDay) ? null : $payDay;
 
         if (is_null($invoicePayDay)) {
-            $nextInstallment = Installment::query()
-                ->where('card_id', $card->id)
-                ->whereNull('paid_at')
-                ->orderBy('pay_day')
-                ->first();
-
-            $invoicePayDay = $nextInstallment?->pay_day?->toDateString();
+            $invoicePayDay = $this->cardInvoiceSummaryService->nextOpenInvoicePayDay($card);
         }
 
         if (is_null($invoicePayDay)) {
@@ -158,8 +146,9 @@ class TelegramCardsQueryService
         $offset = ($page - 1) * $perPage;
         $items = $installments->slice($offset, $perPage)->values();
         $invoiceTotal = (float) $installments->sum('installment_value');
-        $openTotal = (float) $installments->whereNull('paid_at')->sum('installment_value');
-        $closureDate = $this->invoiceClosureDate($card, $invoicePayDay)?->toDateString();
+        $summary = $this->cardInvoiceSummaryService->summarize($card, $invoicePayDay);
+        $openTotal = (float) ($summary['open_total'] ?? 0);
+        $closureDate = $summary['closure_date'] ?? $this->invoiceClosureDate($card, $invoicePayDay)?->toDateString();
 
         return [
             'card_id' => $card->id,
@@ -168,8 +157,8 @@ class TelegramCardsQueryService
             'closure_date' => $closureDate,
             'invoice_total' => $invoiceTotal,
             'open_total' => $openTotal,
-            'is_paid' => $openTotal <= 0,
-            'status' => $this->resolveInvoiceStatus($openTotal, $closureDate),
+            'is_paid' => ($summary['is_paid'] ?? false) === true,
+            'status' => $this->translateInvoiceStatus($summary['status'] ?? 'no_invoice'),
             'page' => $page,
             'per_page' => $perPage,
             'has_previous' => $page > 1,
@@ -195,29 +184,12 @@ class TelegramCardsQueryService
 
     private function buildCardSummary(Card $card): array
     {
-        $nextInstallment = Installment::query()
-            ->where('card_id', $card->id)
-            ->whereNull('paid_at')
-            ->orderBy('pay_day')
-            ->first();
-
-        $openTotal = (float) Installment::query()
-            ->where('card_id', $card->id)
-            ->whereNull('paid_at')
-            ->sum('installment_value');
-
-        $invoicePayDay = $nextInstallment?->pay_day?->toDateString();
-        $invoiceTotal = 0.0;
-
-        if (!is_null($invoicePayDay)) {
-            $invoiceTotal = (float) Installment::query()
-                ->where('card_id', $card->id)
-                ->whereNull('paid_at')
-                ->whereDate('pay_day', $invoicePayDay)
-                ->sum('installment_value');
-        }
-
-        $closureDate = $this->invoiceClosureDate($card, $invoicePayDay)?->toDateString();
+        $summaries = $this->cardInvoiceSummaryService->summariesForCard($card);
+        $currentInvoice = $summaries->first(fn (array $summary) => ($summary['open_total'] ?? 0) > 0);
+        $openTotal = (float) $summaries->sum('open_total');
+        $invoicePayDay = $currentInvoice['pay_day'] ?? null;
+        $invoiceTotal = (float) ($currentInvoice['open_total'] ?? 0);
+        $closureDate = $currentInvoice['closure_date'] ?? $this->invoiceClosureDate($card, $invoicePayDay)?->toDateString();
 
         return [
             'card_id' => $card->id,
@@ -234,8 +206,19 @@ class TelegramCardsQueryService
                 && $invoiceTotal > 0
                 && !is_null($closureDate)
                 && Carbon::today()->startOfDay()->gte(Carbon::parse($closureDate)->startOfDay()),
-            'invoice_status' => $this->resolveInvoiceStatus($invoiceTotal, $closureDate),
+            'invoice_status' => $this->translateInvoiceStatus($currentInvoice['status'] ?? 'no_invoice'),
         ];
+    }
+
+    private function translateInvoiceStatus(string $status): string
+    {
+        return match ($status) {
+            'paga' => 'Paga',
+            'parcialmente_paga' => 'Parcialmente paga',
+            'disponivel_para_pagamento' => 'Disponivel para pagamento',
+            'aguardando_fechamento' => 'Aguardando fechamento',
+            default => 'Sem fatura',
+        };
     }
 
     private function resolveInvoiceStatus(float $openTotal, ?string $closureDate): string

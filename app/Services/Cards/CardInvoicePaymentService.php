@@ -5,6 +5,7 @@ namespace App\Services\Cards;
 use App\Exceptions\CardInvoicePaymentException;
 use App\Models\Card;
 use App\Models\Category;
+use App\Models\CardInvoicePayment;
 use App\Models\Installment;
 use App\Models\Transaction;
 use Carbon\Carbon;
@@ -14,6 +15,11 @@ use Illuminate\Validation\ValidationException;
 
 class CardInvoicePaymentService
 {
+    public function __construct(
+        private readonly CardInvoiceSummaryService $cardInvoiceSummaryService
+    ) {
+    }
+
     /**
      * @throws ValidationException
      * @throws CardInvoicePaymentException
@@ -21,7 +27,7 @@ class CardInvoicePaymentService
     public function payNextInvoice(int $userId, int $cardId, array $payload): array
     {
         $card = $this->resolveCard($userId, $cardId);
-        $nextPayDay = $this->nextInvoicePayDay($card);
+        $nextPayDay = $this->cardInvoiceSummaryService->nextOpenInvoicePayDay($card);
 
         if (!$nextPayDay) {
             throw new CardInvoicePaymentException('Nao ha fatura em aberto para este cartao.', 422);
@@ -39,13 +45,8 @@ class CardInvoicePaymentService
         $card = $this->resolveCard($userId, $cardId);
         $validated = $this->validate($payload);
         $invoicePayDay = Carbon::parse($payDay)->toDateString();
-
-        $installmentsQuery = Installment::query()
-            ->where('card_id', $card->id)
-            ->whereNull('paid_at')
-            ->whereDate('pay_day', $invoicePayDay);
-
-        $openTotal = (float) $installmentsQuery->sum('installment_value');
+        $invoiceSummary = $this->cardInvoiceSummaryService->summarize($card, $invoicePayDay);
+        $openTotal = (float) ($invoiceSummary['open_total'] ?? 0);
 
         if ($openTotal <= 0) {
             throw new CardInvoicePaymentException(
@@ -71,15 +72,27 @@ class CardInvoicePaymentService
 
         $category = $this->resolveCategory($userId, $validated);
         $paymentDate = $validated['date'] ?? Carbon::today()->toDateString();
+        $amountPaid = isset($validated['amount_paid'])
+            ? round((float) $validated['amount_paid'], 2)
+            : $openTotal;
 
-        $paymentTransaction = DB::transaction(function () use (
+        if ($amountPaid <= 0 || $amountPaid > $openTotal) {
+            throw new CardInvoicePaymentException(
+                'O valor pago deve ser maior que zero e menor ou igual ao saldo em aberto da fatura.',
+                422,
+                ['amount_paid' => ['O valor pago deve ser maior que zero e menor ou igual ao saldo em aberto da fatura.']]
+            );
+        }
+
+        [$paymentTransaction, $updatedSummary] = DB::transaction(function () use (
             $userId,
             $card,
             $category,
-            $openTotal,
+            $amountPaid,
             $paymentDate,
             $validated,
-            $invoicePayDay
+            $invoicePayDay,
+            $openTotal
         ) {
             $paymentTransaction = Transaction::create([
                 'user_id' => $userId,
@@ -88,26 +101,48 @@ class CardInvoicePaymentService
                 'payment_method_id' => (int) $validated['payment_method_id'],
                 'transaction_description' => 'Pagamento fatura - ' . $card->card_description,
                 'date' => $paymentDate,
-                'transaction_value' => $openTotal,
+                'transaction_value' => $amountPaid,
             ]);
 
-            Installment::query()
-                ->where('card_id', $card->id)
-                ->whereNull('paid_at')
-                ->whereDate('pay_day', $invoicePayDay)
-                ->update([
-                    'paid_at' => now(),
-                    'payment_transaction_id' => $paymentTransaction->id,
-                ]);
+            CardInvoicePayment::create([
+                'card_id' => $card->id,
+                'pay_day' => $invoicePayDay,
+                'payment_transaction_id' => $paymentTransaction->id,
+                'payment_method_id' => (int) $validated['payment_method_id'],
+                'category_id' => $category->id,
+                'amount_paid' => $amountPaid,
+                'paid_at' => now(),
+            ]);
 
-            return $paymentTransaction;
+            $updatedSummary = $this->cardInvoiceSummaryService->summarize($card, $invoicePayDay);
+
+            if (($updatedSummary['open_total'] ?? 0) <= 0) {
+                $hasSingleFullPayment = abs($amountPaid - $openTotal) < 0.00001;
+
+                Installment::query()
+                    ->where('card_id', $card->id)
+                    ->whereDate('pay_day', $invoicePayDay)
+                    ->update([
+                        'paid_at' => now(),
+                        'payment_transaction_id' => $hasSingleFullPayment ? $paymentTransaction->id : null,
+                    ]);
+
+                $updatedSummary = $this->cardInvoiceSummaryService->summarize($card, $invoicePayDay);
+            }
+
+            return [$paymentTransaction, $updatedSummary];
         });
 
         return [
             'status' => 'created',
             'card' => $card,
             'pay_day' => $invoicePayDay,
-            'invoice_value' => $openTotal,
+            'invoice_value' => $amountPaid,
+            'amount_paid' => $amountPaid,
+            'invoice_total' => (float) ($updatedSummary['total'] ?? 0),
+            'paid_total' => (float) ($updatedSummary['paid_total'] ?? 0),
+            'open_total' => (float) ($updatedSummary['open_total'] ?? 0),
+            'invoice_status' => $updatedSummary['status'] ?? 'no_invoice',
             'category' => $category,
             'payment_transaction' => $paymentTransaction,
         ];
@@ -123,6 +158,7 @@ class CardInvoicePaymentService
             'category_id' => ['nullable', 'integer', 'min:0'],
             'category_description' => ['required_if:category_id,0', 'string', 'max:50'],
             'date' => ['nullable', 'date', 'before_or_equal:today'],
+            'amount_paid' => ['nullable', 'numeric', 'gt:0'],
         ], [
             'payment_method_id.not_in' => 'Pagamento de fatura nao pode ser feito com metodo cartao de credito.',
         ])->validate();
@@ -143,16 +179,6 @@ class CardInvoicePaymentService
 
         return $card;
     }
-
-    private function nextInvoicePayDay(Card $card): ?string
-    {
-        return Installment::query()
-            ->where('card_id', $card->id)
-            ->whereNull('paid_at')
-            ->orderBy('pay_day', 'asc')
-            ->value('pay_day');
-    }
-
     private function invoiceClosureDate(Card $card, string $invoicePayDay): Carbon
     {
         $payDay = Carbon::parse($invoicePayDay)->startOfDay();

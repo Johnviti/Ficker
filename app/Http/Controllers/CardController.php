@@ -4,55 +4,29 @@ namespace App\Http\Controllers;
 
 use App\Exceptions\CardInvoicePaymentException;
 use App\Models\Card;
-use App\Models\Category;
 use App\Models\Flag;
 use App\Models\Installment;
-use App\Models\Transaction;
 use App\Services\Cards\CardCreationService;
 use App\Services\Cards\CardInvoicePaymentService;
-use Carbon\Carbon;
+use App\Services\Cards\CardInvoiceSummaryService;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
 
 class CardController extends Controller
 {
     public function __construct(
         private readonly CardInvoicePaymentService $cardInvoicePaymentService,
-        private readonly CardCreationService $cardCreationService
+        private readonly CardCreationService $cardCreationService,
+        private readonly CardInvoiceSummaryService $cardInvoiceSummaryService
     ) {
     }
 
     private function nextInvoicePayDay(Card $card): ?string
     {
-        return Installment::where('card_id', $card->id)
-            ->whereNull('paid_at')
-            ->orderBy('pay_day', 'asc')
-            ->value('pay_day');
-    }
-
-    private function invoiceClosureDate(Card $card, string $invoicePayDay): Carbon
-    {
-        $payDay = Carbon::parse($invoicePayDay)->startOfDay();
-
-        $closureDay = (int) $card->closure;
-        $expirationDay = (int) $card->expiration;
-
-        $closureMonth = $expirationDay > $closureDay
-            ? $payDay->copy()
-            : $payDay->copy()->subMonth();
-
-        return Carbon::create(
-            $closureMonth->year,
-            $closureMonth->month,
-            min($closureDay, $closureMonth->daysInMonth),
-            0,
-            0,
-            0
-        );
+        return $this->cardInvoiceSummaryService->nextOpenInvoicePayDay($card);
     }
 
     public function store(Request $request): JsonResponse
@@ -97,37 +71,23 @@ class CardController extends Controller
             return 0;
         }
 
-        $nextPayDay = $this->nextInvoicePayDay($card);
-
-        if (!$nextPayDay) {
-            return 0;
-        }
-
-        return (float) Installment::where('card_id', $card->id)
-            ->whereNull('paid_at')
-            ->whereDate('pay_day', $nextPayDay)
-            ->sum('installment_value');
+        return (float) ($this->cardInvoiceSummaryService->currentInvoice($card)['invoice'] ?? 0);
     }
 
     public function showCardInvoice($id): JsonResponse
     {
         try {
             $card = Card::where('user_id', Auth::id())->findOrFail($id);
-
-            $nextPayDay = $this->nextInvoicePayDay($card);
-            $invoice = 0;
-
-            if ($nextPayDay) {
-                $invoice = Installment::where('card_id', $card->id)
-                    ->whereNull('paid_at')
-                    ->whereDate('pay_day', $nextPayDay)
-                    ->sum('installment_value');
-            }
+            $summary = $this->cardInvoiceSummaryService->currentInvoice($card);
 
             return response()->json([
                 'data' => [
-                    'invoice' => $invoice,
-                    'pay_day' => $nextPayDay
+                    'invoice' => $summary['invoice'],
+                    'pay_day' => $summary['pay_day'],
+                    'total' => $summary['total'],
+                    'paid_total' => $summary['paid_total'],
+                    'open_total' => $summary['open_total'],
+                    'status' => $summary['status'],
                 ]
             ], 200);
         } catch (ModelNotFoundException $e) {
@@ -166,34 +126,22 @@ class CardController extends Controller
         try {
             $card = Card::where('user_id', Auth::id())->findOrFail($id);
 
-            $installments = Installment::where('card_id', $card->id)
-                ->orderBy('pay_day', 'asc')
-                ->get();
-
-            $grouped = $installments->groupBy(function ($installment) {
-                return Carbon::parse($installment->pay_day)->toDateString();
-            });
-
-            $invoices = [];
-
-            foreach ($grouped as $payDay => $items) {
-                $openTotal = (float) $items->whereNull('paid_at')->sum('installment_value');
-                $lastPaidAt = $items->max('paid_at');
-
-                $invoices[] = [
-                    'pay_day' => $payDay,
-                    'closure_date' => $this->invoiceClosureDate($card, $payDay)->toDateString(),
-                    'total' => (float) $items->sum('installment_value'),
-                    'open_total' => $openTotal,
-                    'is_paid' => $openTotal <= 0,
-                    'installments_count' => $items->count(),
-                    'paid_at' => $lastPaidAt
-                        ? Carbon::parse($lastPaidAt)
-                            ->timezone('America/Sao_Paulo')
-                            ->format('Y-m-d H:i:s')
-                        : null,
-                ];
-            }
+            $invoices = $this->cardInvoiceSummaryService
+                ->summariesForCard($card)
+                ->map(fn (array $summary) => [
+                    'pay_day' => $summary['pay_day'],
+                    'closure_date' => $summary['closure_date'],
+                    'total' => $summary['total'],
+                    'paid_total' => $summary['paid_total'],
+                    'open_total' => $summary['open_total'],
+                    'is_paid' => $summary['is_paid'],
+                    'installments_count' => $summary['installments_count'],
+                    'paid_at' => $summary['paid_at'],
+                    'payment_transaction_id' => $summary['payment_transaction_id'],
+                    'status' => $summary['status'],
+                    'payment_count' => $summary['payment_count'],
+                ])
+                ->all();
 
             return response()->json([
                 'data' => [
@@ -204,125 +152,6 @@ class CardController extends Controller
         } catch (ModelNotFoundException $e) {
             return $this->errorResponse('Cartao nao encontrado ou sem faturas.', 404);
         }
-    }
-
-    private function payInvoiceCore(Request $request, Card $card, string $invoicePayDay): JsonResponse
-    {
-        $request->validate([
-            'payment_method_id' => ['required', 'integer', 'not_in:4'],
-            'category_id' => ['nullable', 'integer', 'min:0'],
-            'category_description' => ['required_if:category_id,0', 'string', 'max:50'],
-            'date' => ['nullable', 'date', 'before_or_equal:today'],
-        ], [
-            'payment_method_id.not_in' => 'Pagamento de fatura nao pode ser feito com metodo cartao de credito.',
-        ]);
-
-        $invoicePayDay = Carbon::parse($invoicePayDay)->toDateString();
-        $userId = Auth::id();
-
-        $installmentsQuery = Installment::where('card_id', $card->id)
-            ->whereNull('paid_at')
-            ->whereDate('pay_day', $invoicePayDay);
-
-        $openTotal = (float) $installmentsQuery->sum('installment_value');
-
-        if ($openTotal <= 0) {
-            return $this->errorResponse('Esta fatura nao possui parcelas em aberto (ja paga ou inexistente).', 422, [
-                'invoice_pay_day' => [$invoicePayDay],
-            ]);
-        }
-
-        $closureDate = $this->invoiceClosureDate($card, $invoicePayDay);
-        $today = Carbon::today()->startOfDay();
-
-        if ($today->lt($closureDate)) {
-            return $this->errorResponse('A fatura ainda nao fechou. Voce so pode pagar apos o fechamento.', 422, [
-                'invoice_pay_day' => [$invoicePayDay],
-                'invoice_closure_date' => [$closureDate->toDateString()],
-            ]);
-        }
-
-        $paymentDate = $request->date ?? Carbon::today()->toDateString();
-        $categoryId = $request->category_id;
-
-        if (is_null($categoryId)) {
-            $category = Category::where('user_id', $userId)
-                ->where('type_id', 2)
-                ->where('category_description', 'Pagamento de fatura')
-                ->first();
-
-            if (!$category) {
-                $category = Category::create([
-                    'user_id' => $userId,
-                    'type_id' => 2,
-                    'category_description' => 'Pagamento de fatura'
-                ]);
-            }
-
-            $categoryId = $category->id;
-
-        } elseif ((int) $categoryId === 0) {
-            $category = Category::create([
-                'type_id' => 2,
-                'category_description' => $request->category_description
-            ]);
-            $categoryId = $category->id;
-
-        } else {
-            $category = Category::find($categoryId);
-
-            if (!$category) {
-                return $this->errorResponse('Categoria nao encontrada.', 404, [
-                    'category_id' => ['Categoria nao encontrada.']
-                ]);
-            }
-
-            if ((int) $category->type_id !== 2) {
-                return $this->errorResponse('A categoria selecionada nao corresponde ao tipo da transacao.', 422, [
-                    'category_id' => ['A categoria selecionada nao corresponde ao tipo da transacao.']
-                ]);
-            }
-        }
-
-        $paymentTransaction = DB::transaction(function () use (
-            $userId,
-            $card,
-            $categoryId,
-            $openTotal,
-            $paymentDate,
-            $request,
-            $invoicePayDay
-        ) {
-            $paymentTransaction = Transaction::create([
-                'user_id' => $userId,
-                'category_id' => $categoryId,
-                'type_id' => 2,
-                'payment_method_id' => (int) $request->payment_method_id,
-                'transaction_description' => 'Pagamento fatura - ' . $card->card_description,
-                'date' => $paymentDate,
-                'transaction_value' => $openTotal,
-            ]);
-
-            Installment::where('card_id', $card->id)
-                ->whereNull('paid_at')
-                ->whereDate('pay_day', $invoicePayDay)
-                ->update([
-                    'paid_at' => now(),
-                    'payment_transaction_id' => $paymentTransaction->id
-                ]);
-
-            return $paymentTransaction;
-        });
-
-        return response()->json([
-            'data' => [
-                'message' => 'Fatura paga com sucesso.',
-                'card_id' => $card->id,
-                'pay_day' => $invoicePayDay,
-                'invoice_value' => $openTotal,
-                'payment_transaction' => $paymentTransaction
-            ]
-        ], 200);
     }
 
     public function payInvoiceByPayDay(Request $request, $id, $payDay): JsonResponse
@@ -336,6 +165,11 @@ class CardController extends Controller
                     'card_id' => $result['card']->id,
                     'pay_day' => $result['pay_day'],
                     'invoice_value' => $result['invoice_value'],
+                    'amount_paid' => $result['amount_paid'],
+                    'invoice_total' => $result['invoice_total'],
+                    'paid_total' => $result['paid_total'],
+                    'open_total' => $result['open_total'],
+                    'status' => $result['invoice_status'],
                     'payment_transaction' => $result['payment_transaction'],
                 ]
             ], 200);
@@ -359,6 +193,11 @@ class CardController extends Controller
                     'card_id' => $result['card']->id,
                     'pay_day' => $result['pay_day'],
                     'invoice_value' => $result['invoice_value'],
+                    'amount_paid' => $result['amount_paid'],
+                    'invoice_total' => $result['invoice_total'],
+                    'paid_total' => $result['paid_total'],
+                    'open_total' => $result['open_total'],
+                    'status' => $result['invoice_status'],
                     'payment_transaction' => $result['payment_transaction'],
                 ]
             ], 200);

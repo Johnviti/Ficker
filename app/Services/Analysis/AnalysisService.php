@@ -3,8 +3,9 @@
 namespace App\Services\Analysis;
 
 use App\Models\Card;
-use App\Models\Installment;
+use App\Models\CardInvoicePayment;
 use App\Models\Spending;
+use App\Services\Cards\CardInvoiceSummaryService;
 use Carbon\Carbon;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
@@ -13,6 +14,11 @@ class AnalysisService
 {
     private const TIMEZONE = 'America/Sao_Paulo';
     private const CURRENCY = 'BRL';
+
+    public function __construct(
+        private readonly CardInvoiceSummaryService $cardInvoiceSummaryService
+    ) {
+    }
 
     public function resolveFilters(array $filters): array
     {
@@ -152,23 +158,15 @@ class AnalysisService
             ->get();
 
         return $cards->map(function (Card $card) use ($filters) {
-            $currentInvoicePayDay = $this->nextOpenInvoicePayDay($card->id);
-            $currentInvoiceClosureDate = $this->invoiceClosureDate($card, $currentInvoicePayDay);
-            $currentInvoiceTotal = 0.0;
+            $invoiceSummaries = $this->cardInvoiceSummaryService->summariesForCard($card);
+            $currentInvoice = collect($invoiceSummaries)->first(fn (array $summary) => ($summary['open_total'] ?? 0) > 0);
 
-            if (!is_null($currentInvoicePayDay)) {
-                $currentInvoiceTotal = (float) Installment::query()
-                    ->where('card_id', $card->id)
-                    ->whereNull('paid_at')
-                    ->whereDate('pay_day', $currentInvoicePayDay)
-                    ->sum('installment_value');
-            }
-
-            $openInvoiceTotal = (float) Installment::query()
-                ->where('card_id', $card->id)
-                ->whereNull('paid_at')
-                ->sum('installment_value');
-
+            $currentInvoicePayDay = $currentInvoice['pay_day'] ?? null;
+            $currentInvoiceClosureDate = isset($currentInvoice['closure_date'])
+                ? Carbon::parse($currentInvoice['closure_date'], self::TIMEZONE)
+                : null;
+            $currentInvoiceTotal = (float) ($currentInvoice['open_total'] ?? 0);
+            $openInvoiceTotal = (float) collect($invoiceSummaries)->sum('open_total');
             $futureCommitmentTotal = max($openInvoiceTotal - $currentInvoiceTotal, 0);
 
             $purchasesTotalInPeriod = (float) DB::table('transactions')
@@ -187,20 +185,37 @@ class AnalysisService
                 ->where('payment_method_id', 4)
                 ->count();
 
-            $invoicePaymentsTotalInPeriod = (float) DB::table('installments as i')
+            $invoicePaymentsTotalInPeriod = (float) CardInvoicePayment::query()
+                ->join('transactions as payment', 'payment.id', '=', 'card_invoice_payments.payment_transaction_id')
+                ->where('card_invoice_payments.card_id', $card->id)
+                ->whereBetween('payment.date', [$filters['date_from'], $filters['date_to']])
+                ->sum('card_invoice_payments.amount_paid');
+
+            $legacyInvoicePaymentsTotalInPeriod = (float) DB::table('installments as i')
                 ->join('transactions as payment', 'payment.id', '=', 'i.payment_transaction_id')
                 ->where('i.card_id', $card->id)
                 ->whereNotNull('i.payment_transaction_id')
                 ->whereBetween('payment.date', [$filters['date_from'], $filters['date_to']])
+                ->whereNotExists(function ($query) {
+                    $query->selectRaw('1')
+                        ->from('card_invoice_payments as cip')
+                        ->whereColumn('cip.card_id', 'i.card_id')
+                        ->whereColumn('cip.pay_day', 'i.pay_day');
+                })
                 ->sum('i.installment_value');
 
-            $paidInvoicesCountInPeriod = DB::table('installments as i')
-                ->join('transactions as payment', 'payment.id', '=', 'i.payment_transaction_id')
-                ->where('i.card_id', $card->id)
-                ->whereNotNull('i.payment_transaction_id')
-                ->whereBetween('payment.date', [$filters['date_from'], $filters['date_to']])
-                ->selectRaw('COUNT(DISTINCT DATE(i.pay_day)) as paid_invoices_count')
-                ->value('paid_invoices_count');
+            $paidInvoicesCountInPeriod = collect($invoiceSummaries)
+                ->filter(fn (array $summary) => ($summary['is_paid'] ?? false) === true)
+                ->filter(function (array $summary) use ($filters) {
+                    if (empty($summary['paid_at'])) {
+                        return false;
+                    }
+
+                    $paidAt = Carbon::parse($summary['paid_at'], self::TIMEZONE)->toDateString();
+
+                    return $paidAt >= $filters['date_from'] && $paidAt <= $filters['date_to'];
+                })
+                ->count();
 
             return [
                 'card_id' => $card->id,
@@ -219,10 +234,10 @@ class AnalysisService
                     && $currentInvoiceTotal > 0
                     && !is_null($currentInvoiceClosureDate)
                     && Carbon::today(self::TIMEZONE)->startOfDay()->gte($currentInvoiceClosureDate->copy()->startOfDay()),
-                'current_invoice_status' => $this->resolveInvoiceStatus($currentInvoiceTotal, $currentInvoiceClosureDate?->toDateString()),
+                'current_invoice_status' => $currentInvoice['status'] ?? 'no_invoice',
                 'purchases_total_in_period' => $purchasesTotalInPeriod,
                 'purchases_count_in_period' => $purchasesCountInPeriod,
-                'invoice_payments_total_in_period' => $invoicePaymentsTotalInPeriod,
+                'invoice_payments_total_in_period' => $invoicePaymentsTotalInPeriod + $legacyInvoicePaymentsTotalInPeriod,
                 'paid_invoices_count_in_period' => (int) ($paidInvoicesCountInPeriod ?? 0),
             ];
         })->values()->all();
@@ -236,53 +251,38 @@ class AnalysisService
             ->get()
             ->keyBy('id');
 
-        $installments = Installment::query()
-            ->whereIn('card_id', $cards->keys())
-            ->whereBetween('pay_day', [$filters['date_from'], $filters['date_to']])
-            ->when($filters['card_id'], function ($query, $cardId) {
-                $query->where('card_id', $cardId);
+        return $cards
+            ->flatMap(function (Card $card) use ($filters) {
+                return $this->cardInvoiceSummaryService
+                    ->summariesForCard($card)
+                    ->filter(function (array $summary) use ($filters) {
+                        $payDay = $summary['pay_day'] ?? null;
+
+                        return !is_null($payDay)
+                            && $payDay >= $filters['date_from']
+                            && $payDay <= $filters['date_to'];
+                    })
+                    ->map(function (array $summary) use ($card) {
+                        return [
+                            'card_id' => $card->id,
+                            'card_description' => $card->card_description,
+                            'flag_description' => $card->flag?->flag_description,
+                            'pay_day' => $summary['pay_day'],
+                            'closure_date' => $summary['closure_date'],
+                            'invoice_total' => $summary['total'],
+                            'paid_total' => $summary['paid_total'],
+                            'open_total' => $summary['open_total'],
+                            'is_paid' => $summary['is_paid'],
+                            'paid_at' => $summary['paid_at'],
+                            'payment_transaction_id' => $summary['payment_transaction_id'],
+                            'installments_count' => $summary['installments_count'],
+                            'status' => $summary['status'],
+                        ];
+                    });
             })
-            ->orderBy('pay_day')
-            ->orderBy('card_id')
-            ->get();
-
-        $grouped = $installments->groupBy(function (Installment $installment) {
-            return $installment->card_id . '|' . Carbon::parse($installment->pay_day, self::TIMEZONE)->toDateString();
-        });
-
-        return $grouped->map(function (Collection $items, string $groupKey) use ($cards) {
-            [$cardId, $payDay] = explode('|', $groupKey);
-            /** @var Card|null $card */
-            $card = $cards->get((int) $cardId);
-            $openTotal = (float) $items->whereNull('paid_at')->sum('installment_value');
-            $invoiceTotal = (float) $items->sum('installment_value');
-            $paidAtValues = $items
-                ->pluck('paid_at')
-                ->filter()
-                ->map(fn ($value) => Carbon::parse($value, self::TIMEZONE)->format('Y-m-d H:i:s'))
-                ->unique()
-                ->values();
-            $paymentTransactionIds = $items
-                ->pluck('payment_transaction_id')
-                ->filter()
-                ->unique()
-                ->values();
-
-            return [
-                'card_id' => (int) $cardId,
-                'card_description' => $card?->card_description,
-                'flag_description' => $card?->flag?->flag_description,
-                'pay_day' => $payDay,
-                'closure_date' => $card ? $this->invoiceClosureDate($card, $payDay)?->toDateString() : null,
-                'invoice_total' => $invoiceTotal,
-                'open_total' => $openTotal,
-                'is_paid' => $openTotal <= 0,
-                'paid_at' => $paidAtValues->count() === 1 ? $paidAtValues->first() : null,
-                'payment_transaction_id' => $paymentTransactionIds->count() === 1 ? (int) $paymentTransactionIds->first() : null,
-                'installments_count' => $items->count(),
-                'status' => $this->resolveInvoiceStatus($openTotal, $card ? $this->invoiceClosureDate($card, $payDay)?->toDateString() : null),
-            ];
-        })->values()->all();
+            ->sortBy(fn (array $item) => ($item['pay_day'] ?? '') . '|' . str_pad((string) ($item['card_id'] ?? 0), 10, '0', STR_PAD_LEFT))
+            ->values()
+            ->all();
     }
 
     public function buildCategories(int $userId, array $filters): array
@@ -526,40 +526,6 @@ class AnalysisService
                 return (float) optional($items->last())->planned_spending;
             })
             ->all();
-    }
-
-    private function nextOpenInvoicePayDay(int $cardId): ?string
-    {
-        return Installment::query()
-            ->where('card_id', $cardId)
-            ->whereNull('paid_at')
-            ->orderBy('pay_day')
-            ->value('pay_day');
-    }
-
-    private function invoiceClosureDate(Card $card, ?string $invoicePayDay): ?Carbon
-    {
-        if (is_null($invoicePayDay)) {
-            return null;
-        }
-
-        $payDay = Carbon::parse($invoicePayDay, self::TIMEZONE)->startOfDay();
-        $closureDay = (int) $card->closure;
-        $expirationDay = (int) $card->expiration;
-
-        $closureMonth = $expirationDay > $closureDay
-            ? $payDay->copy()
-            : $payDay->copy()->subMonth();
-
-        return Carbon::create(
-            $closureMonth->year,
-            $closureMonth->month,
-            min($closureDay, $closureMonth->daysInMonth),
-            0,
-            0,
-            0,
-            self::TIMEZONE
-        );
     }
 
     private function resolveInvoiceStatus(float $openTotal, ?string $closureDate): string

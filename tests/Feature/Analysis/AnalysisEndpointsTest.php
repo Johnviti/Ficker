@@ -3,6 +3,7 @@
 namespace Tests\Feature\Analysis;
 
 use App\Models\Card;
+use App\Models\CardInvoicePayment;
 use App\Models\Category;
 use App\Models\Flag;
 use App\Models\Installment;
@@ -171,6 +172,16 @@ class AnalysisEndpointsTest extends TestCase
             'payment_transaction_id' => 113,
         ]);
 
+        CardInvoicePayment::create([
+            'card_id' => $this->card->id,
+            'pay_day' => '2026-04-03',
+            'payment_transaction_id' => 113,
+            'payment_method_id' => 1,
+            'category_id' => $this->invoiceCategory->id,
+            'amount_paid' => 650,
+            'paid_at' => '2026-03-15 18:07:19',
+        ]);
+
         User::factory()->create(['level_id' => 1]);
     }
 
@@ -230,11 +241,13 @@ class AnalysisEndpointsTest extends TestCase
             ->assertJsonCount(2, 'data.invoices')
             ->assertJsonPath('data.invoices.0.pay_day', '2026-04-03')
             ->assertJsonPath('data.invoices.0.invoice_total', 650)
+            ->assertJsonPath('data.invoices.0.paid_total', 650)
             ->assertJsonPath('data.invoices.0.open_total', 0)
             ->assertJsonPath('data.invoices.0.is_paid', true)
             ->assertJsonPath('data.invoices.0.payment_transaction_id', 113)
             ->assertJsonPath('data.invoices.1.pay_day', '2026-05-03')
             ->assertJsonPath('data.invoices.1.invoice_total', 300)
+            ->assertJsonPath('data.invoices.1.paid_total', 0)
             ->assertJsonPath('data.invoices.1.open_total', 300)
             ->assertJsonPath('data.invoices.1.is_paid', false);
     }

@@ -3,6 +3,7 @@
 namespace Tests\Feature\Transaction;
 
 use App\Models\Card;
+use App\Models\CardInvoicePayment;
 use App\Models\Category;
 use App\Models\Flag;
 use App\Models\Installment;
@@ -115,6 +116,16 @@ class TransactionDeletionReconciliationTest extends TestCase
             'payment_transaction_id' => $payment->id,
         ]);
 
+        CardInvoicePayment::create([
+            'card_id' => $this->card->id,
+            'pay_day' => '2026-04-03',
+            'payment_transaction_id' => $payment->id,
+            'payment_method_id' => 1,
+            'category_id' => $this->invoiceCategory->id,
+            'amount_paid' => 650,
+            'paid_at' => '2026-03-15 18:07:19',
+        ]);
+
         $this->deleteJson("/api/transaction/{$purchaseA->id}")
             ->assertOk()
             ->assertJsonPath('data.message', 'Transacao excluida com sucesso.');
@@ -126,6 +137,13 @@ class TransactionDeletionReconciliationTest extends TestCase
         $this->assertDatabaseHas('transactions', [
             'id' => $payment->id,
             'transaction_value' => 350,
+        ]);
+
+        $this->assertDatabaseHas('card_invoice_payments', [
+            'card_id' => $this->card->id,
+            'pay_day' => '2026-04-03',
+            'payment_transaction_id' => $payment->id,
+            'amount_paid' => 350.00,
         ]);
 
         $this->assertDatabaseHas('installments', [
@@ -168,6 +186,16 @@ class TransactionDeletionReconciliationTest extends TestCase
             'payment_transaction_id' => $payment->id,
         ]);
 
+        CardInvoicePayment::create([
+            'card_id' => $this->card->id,
+            'pay_day' => '2026-04-03',
+            'payment_transaction_id' => $payment->id,
+            'payment_method_id' => 1,
+            'category_id' => $this->invoiceCategory->id,
+            'amount_paid' => 300,
+            'paid_at' => '2026-03-15 18:07:19',
+        ]);
+
         $this->deleteJson("/api/transaction/{$purchase->id}")
             ->assertOk();
 
@@ -178,5 +206,206 @@ class TransactionDeletionReconciliationTest extends TestCase
         $this->assertDatabaseMissing('transactions', [
             'id' => $payment->id,
         ]);
+
+        $this->assertDatabaseMissing('card_invoice_payments', [
+            'card_id' => $this->card->id,
+            'pay_day' => '2026-04-03',
+            'payment_transaction_id' => $payment->id,
+        ]);
+    }
+
+    public function test_deleting_purchase_reconciles_multiple_partial_invoice_payments_from_latest_to_oldest(): void
+    {
+        $purchaseA = Transaction::factory()->create([
+            'user_id' => $this->user->id,
+            'card_id' => $this->card->id,
+            'category_id' => $this->expenseCategory->id,
+            'type_id' => 2,
+            'payment_method_id' => 4,
+            'transaction_description' => 'Compra A',
+            'date' => '2026-03-10',
+            'transaction_value' => 300,
+            'installments' => 1,
+        ]);
+
+        $purchaseB = Transaction::factory()->create([
+            'user_id' => $this->user->id,
+            'card_id' => $this->card->id,
+            'category_id' => $this->expenseCategory->id,
+            'type_id' => 2,
+            'payment_method_id' => 4,
+            'transaction_description' => 'Compra B',
+            'date' => '2026-03-11',
+            'transaction_value' => 300,
+            'installments' => 1,
+        ]);
+
+        Installment::create([
+            'transaction_id' => $purchaseA->id,
+            'installment_description' => 'Compra A 1/1',
+            'installment_value' => 300,
+            'card_id' => $this->card->id,
+            'pay_day' => '2026-04-03',
+        ]);
+
+        Installment::create([
+            'transaction_id' => $purchaseB->id,
+            'installment_description' => 'Compra B 1/1',
+            'installment_value' => 300,
+            'card_id' => $this->card->id,
+            'pay_day' => '2026-04-03',
+        ]);
+
+        $paymentA = Transaction::factory()->create([
+            'user_id' => $this->user->id,
+            'category_id' => $this->invoiceCategory->id,
+            'type_id' => 2,
+            'payment_method_id' => 1,
+            'transaction_description' => 'Pagamento fatura - Cartao Principal2',
+            'date' => '2026-03-15',
+            'transaction_value' => 200,
+        ]);
+
+        $paymentB = Transaction::factory()->create([
+            'user_id' => $this->user->id,
+            'category_id' => $this->invoiceCategory->id,
+            'type_id' => 2,
+            'payment_method_id' => 1,
+            'transaction_description' => 'Pagamento fatura - Cartao Principal2',
+            'date' => '2026-03-16',
+            'transaction_value' => 200,
+        ]);
+
+        CardInvoicePayment::create([
+            'card_id' => $this->card->id,
+            'pay_day' => '2026-04-03',
+            'payment_transaction_id' => $paymentA->id,
+            'payment_method_id' => 1,
+            'category_id' => $this->invoiceCategory->id,
+            'amount_paid' => 200,
+            'paid_at' => '2026-03-15 18:07:19',
+        ]);
+
+        CardInvoicePayment::create([
+            'card_id' => $this->card->id,
+            'pay_day' => '2026-04-03',
+            'payment_transaction_id' => $paymentB->id,
+            'payment_method_id' => 1,
+            'category_id' => $this->invoiceCategory->id,
+            'amount_paid' => 200,
+            'paid_at' => '2026-03-16 18:07:19',
+        ]);
+
+        $this->deleteJson("/api/transaction/{$purchaseA->id}")
+            ->assertOk();
+
+        $this->assertDatabaseHas('transactions', [
+            'id' => $paymentA->id,
+            'transaction_value' => 200,
+        ]);
+
+        $this->assertDatabaseHas('transactions', [
+            'id' => $paymentB->id,
+            'transaction_value' => 100,
+        ]);
+
+        $this->assertDatabaseHas('card_invoice_payments', [
+            'card_id' => $this->card->id,
+            'pay_day' => '2026-04-03',
+            'payment_transaction_id' => $paymentA->id,
+            'amount_paid' => 200.00,
+        ]);
+
+        $this->assertDatabaseHas('card_invoice_payments', [
+            'card_id' => $this->card->id,
+            'pay_day' => '2026-04-03',
+            'payment_transaction_id' => $paymentB->id,
+            'amount_paid' => 100.00,
+        ]);
+    }
+
+    public function test_deleting_purchase_marks_remaining_installment_as_paid_when_partial_payment_becomes_sufficient(): void
+    {
+        $purchaseA = Transaction::factory()->create([
+            'user_id' => $this->user->id,
+            'category_id' => $this->expenseCategory->id,
+            'type_id' => 2,
+            'payment_method_id' => 4,
+            'transaction_description' => 'Compra A',
+            'date' => '2026-03-10',
+            'transaction_value' => 100,
+            'installments' => 10,
+            'card_id' => $this->card->id,
+        ]);
+
+        $purchaseB = Transaction::factory()->create([
+            'user_id' => $this->user->id,
+            'category_id' => $this->expenseCategory->id,
+            'type_id' => 2,
+            'payment_method_id' => 4,
+            'transaction_description' => 'Compra B',
+            'date' => '2026-03-10',
+            'transaction_value' => 200,
+            'installments' => 10,
+            'card_id' => $this->card->id,
+        ]);
+
+        $remainingInstallment = Installment::create([
+            'transaction_id' => $purchaseA->id,
+            'installment_description' => 'Compra A 1/10',
+            'installment_value' => 10,
+            'card_id' => $this->card->id,
+            'pay_day' => '2026-04-03',
+        ]);
+
+        Installment::create([
+            'transaction_id' => $purchaseB->id,
+            'installment_description' => 'Compra B 1/10',
+            'installment_value' => 20,
+            'card_id' => $this->card->id,
+            'pay_day' => '2026-04-03',
+        ]);
+
+        $payment = Transaction::factory()->create([
+            'user_id' => $this->user->id,
+            'category_id' => $this->invoiceCategory->id,
+            'type_id' => 2,
+            'payment_method_id' => 1,
+            'transaction_description' => 'Pagamento fatura - Cartao Principal2',
+            'date' => '2026-03-15',
+            'transaction_value' => 15,
+        ]);
+
+        CardInvoicePayment::create([
+            'card_id' => $this->card->id,
+            'pay_day' => '2026-04-03',
+            'payment_transaction_id' => $payment->id,
+            'payment_method_id' => 1,
+            'category_id' => $this->invoiceCategory->id,
+            'amount_paid' => 15,
+            'paid_at' => '2026-03-15 18:07:19',
+        ]);
+
+        $this->deleteJson("/api/transaction/{$purchaseB->id}")
+            ->assertOk();
+
+        $this->assertDatabaseHas('transactions', [
+            'id' => $payment->id,
+            'transaction_value' => 10,
+        ]);
+
+        $this->assertDatabaseHas('card_invoice_payments', [
+            'card_id' => $this->card->id,
+            'pay_day' => '2026-04-03',
+            'payment_transaction_id' => $payment->id,
+            'amount_paid' => 10.00,
+        ]);
+
+        $this->assertDatabaseHas('installments', [
+            'id' => $remainingInstallment->id,
+            'payment_transaction_id' => $payment->id,
+        ]);
+
+        $this->assertNotNull($remainingInstallment->fresh()->paid_at);
     }
 }
