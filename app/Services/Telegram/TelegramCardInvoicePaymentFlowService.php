@@ -23,6 +23,7 @@ class TelegramCardInvoicePaymentFlowService
     {
         return in_array($state, [
             ConversationSession::STATE_CARD_INVOICE_PAYMENT_METHOD,
+            ConversationSession::STATE_CARD_INVOICE_PAYMENT_AMOUNT,
             ConversationSession::STATE_CARD_INVOICE_PAYMENT_CATEGORY,
             ConversationSession::STATE_CARD_INVOICE_PAYMENT_CONFIRM,
         ], true);
@@ -104,6 +105,7 @@ class TelegramCardInvoicePaymentFlowService
 
         return match ($session->state) {
             ConversationSession::STATE_CARD_INVOICE_PAYMENT_METHOD => $this->handlePaymentMethodStep($session, $userId, $trimmed),
+            ConversationSession::STATE_CARD_INVOICE_PAYMENT_AMOUNT => $this->handleAmountStep($session, $userId, $trimmed),
             ConversationSession::STATE_CARD_INVOICE_PAYMENT_CATEGORY => $this->handleCategoryStep($session, $userId, $trimmed),
             ConversationSession::STATE_CARD_INVOICE_PAYMENT_CONFIRM => $this->handleConfirmationStep($session, $userId, $trimmed),
             default => $this->cancel($session, $userId),
@@ -161,10 +163,46 @@ class TelegramCardInvoicePaymentFlowService
             );
         }
 
-        $categories = $this->lookupService->getInvoicePaymentCategoryOptions($userId);
-        $this->transition($session, ConversationSession::STATE_CARD_INVOICE_PAYMENT_CATEGORY, [
+        $this->transition($session, ConversationSession::STATE_CARD_INVOICE_PAYMENT_AMOUNT, [
             'payment_method_id' => $selected['id'],
             'resolved_payment_method_description' => $selected['description'],
+        ], $userId);
+
+        return [
+            'status' => 'in_progress',
+            'message' => $this->replyBuilder->buildAmountPrompt($this->cardContext($session->fresh())),
+        ];
+    }
+
+    private function handleAmountStep(ConversationSession $session, int $userId, string $text): array
+    {
+        $amount = $this->parseMoneyInput($text);
+        $invoiceTotal = (float) $session->context(ConversationSession::CONTEXT_SELECTED_CARD_INVOICE_TOTAL, 0);
+
+        if (is_null($amount)) {
+            return $this->validationError(
+                'Informe um valor valido. Exemplos: 150 ou 150,50.',
+                $this->promptForState($session, $userId)
+            );
+        }
+
+        if ($amount <= 0) {
+            return $this->validationError(
+                'O valor deve ser maior que zero.',
+                $this->promptForState($session, $userId)
+            );
+        }
+
+        if ($amount > $invoiceTotal) {
+            return $this->validationError(
+                'O valor nao pode ser maior que o saldo em aberto da fatura.',
+                $this->promptForState($session, $userId)
+            );
+        }
+
+        $categories = $this->lookupService->getInvoicePaymentCategoryOptions($userId);
+        $this->transition($session, ConversationSession::STATE_CARD_INVOICE_PAYMENT_CATEGORY, [
+            'amount_paid' => $amount,
             'category_options' => $categories,
         ], $userId);
 
@@ -230,6 +268,7 @@ class TelegramCardInvoicePaymentFlowService
                 array_filter([
                     'payment_method_id' => $draft['payment_method_id'] ?? null,
                     'category_id' => $draft['category_id'] ?? null,
+                    'amount_paid' => $draft['amount_paid'] ?? null,
                 ], static fn ($value) => !is_null($value))
             );
         } catch (ValidationException $e) {
@@ -293,6 +332,9 @@ class TelegramCardInvoicePaymentFlowService
                 $session->context(ConversationSession::CONTEXT_DRAFT . '.payment_method_options', $this->lookupService->getInvoicePaymentMethods()),
                 $this->cardContext($session)
             ),
+            ConversationSession::STATE_CARD_INVOICE_PAYMENT_AMOUNT => $this->replyBuilder->buildAmountPrompt(
+                $this->cardContext($session)
+            ),
             ConversationSession::STATE_CARD_INVOICE_PAYMENT_CATEGORY => $this->replyBuilder->buildCategoryPrompt(
                 $session->context(ConversationSession::CONTEXT_DRAFT . '.category_options', $this->lookupService->getInvoicePaymentCategoryOptions($userId)),
                 $this->cardContext($session)
@@ -321,6 +363,7 @@ class TelegramCardInvoicePaymentFlowService
             'selected_card_pay_day' => $session->context(ConversationSession::CONTEXT_SELECTED_CARD_PAY_DAY),
             'selected_card_closure_date' => $session->context(ConversationSession::CONTEXT_SELECTED_CARD_CLOSURE_DATE),
             'selected_card_invoice_total' => (float) $session->context(ConversationSession::CONTEXT_SELECTED_CARD_INVOICE_TOTAL, 0),
+            'selected_card_invoice_amount' => (float) $session->context(ConversationSession::CONTEXT_DRAFT . '.amount_paid', 0),
             'parent_page' => (int) $session->context(ConversationSession::CONTEXT_PARENT_PAGE, 1),
         ];
     }
@@ -333,7 +376,30 @@ class TelegramCardInvoicePaymentFlowService
             'selected_card_pay_day' => $queryResult['pay_day'] ?? $session->context(ConversationSession::CONTEXT_SELECTED_CARD_PAY_DAY),
             'selected_card_closure_date' => $queryResult['closure_date'] ?? $session->context(ConversationSession::CONTEXT_SELECTED_CARD_CLOSURE_DATE),
             'selected_card_invoice_total' => (float) ($queryResult['invoice_total'] ?? $queryResult['open_total'] ?? $session->context(ConversationSession::CONTEXT_SELECTED_CARD_INVOICE_TOTAL, 0)),
+            'selected_card_invoice_amount' => (float) $session->context(ConversationSession::CONTEXT_DRAFT . '.amount_paid', 0),
             'parent_page' => (int) $session->context(ConversationSession::CONTEXT_PARENT_PAGE, 1),
         ];
+    }
+
+    private function parseMoneyInput(string $text): ?float
+    {
+        $normalized = preg_replace('/[^\d,\.]/', '', trim($text));
+
+        if ($normalized === null || $normalized === '') {
+            return null;
+        }
+
+        if (str_contains($normalized, ',') && str_contains($normalized, '.')) {
+            $normalized = str_replace('.', '', $normalized);
+            $normalized = str_replace(',', '.', $normalized);
+        } elseif (str_contains($normalized, ',')) {
+            $normalized = str_replace(',', '.', $normalized);
+        }
+
+        if (!is_numeric($normalized)) {
+            return null;
+        }
+
+        return round((float) $normalized, 2);
     }
 }

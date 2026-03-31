@@ -54,7 +54,7 @@ class TelegramCardInvoicePaymentReplyBuilder
     {
         $lines = [
             'Pagamento da fatura',
-            'Passo 2',
+            'Passo 3',
             'Escolha a categoria da saida:',
         ];
 
@@ -64,7 +64,7 @@ class TelegramCardInvoicePaymentReplyBuilder
 
         $lines[] = '';
         $lines[] = 'Cartao: ' . ($cardContext['selected_card_description'] ?? 'Cartao');
-        $lines[] = 'Valor da fatura: ' . $this->money($cardContext['selected_card_invoice_total'] ?? 0);
+        $lines[] = 'Valor a pagar: ' . $this->money($cardContext['selected_card_invoice_amount'] ?? $cardContext['selected_card_invoice_total'] ?? 0);
         $lines[] = '';
         $lines[] = '7 - voltar';
         $lines[] = '0 - cancelar';
@@ -72,12 +72,29 @@ class TelegramCardInvoicePaymentReplyBuilder
         return implode("\n", $lines);
     }
 
+    public function buildAmountPrompt(array $cardContext = []): string
+    {
+        return implode("\n", [
+            'Pagamento da fatura',
+            'Passo 2',
+            'Cartao: ' . ($cardContext['selected_card_description'] ?? 'Cartao'),
+            'Valor em aberto: ' . $this->money($cardContext['selected_card_invoice_total'] ?? 0),
+            'Vencimento: ' . $this->formatDate($cardContext['selected_card_pay_day'] ?? null),
+            '',
+            'Informe o valor que deseja pagar.',
+            'Exemplos: 150 ou 150,50',
+            '',
+            '7 - voltar',
+            '0 - cancelar',
+        ]);
+    }
+
     public function buildConfirmationPrompt(array $draft, array $cardContext = []): string
     {
         return implode("\n", [
             'Confirmar pagamento da fatura',
             'Cartao: ' . ($cardContext['selected_card_description'] ?? 'Cartao'),
-            'Valor: ' . $this->money($cardContext['selected_card_invoice_total'] ?? 0),
+            'Valor: ' . $this->money($draft['amount_paid'] ?? $cardContext['selected_card_invoice_amount'] ?? $cardContext['selected_card_invoice_total'] ?? 0),
             'Vencimento: ' . $this->formatDate($cardContext['selected_card_pay_day'] ?? null),
             'Pagamento: ' . ($draft['resolved_payment_method_description'] ?? '-'),
             'Categoria: ' . ($draft['resolved_category_description'] ?? 'Pagamento de fatura'),

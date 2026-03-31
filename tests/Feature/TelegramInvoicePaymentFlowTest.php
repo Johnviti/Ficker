@@ -126,8 +126,15 @@ class TelegramInvoicePaymentFlowTest extends TestCase
         $session->refresh();
 
         $this->assertSame('in_progress', data_get($paymentMethodEvent->normalized_payload_json, 'card_invoice_payment_flow.status'));
-        $this->assertSame(ConversationSession::STATE_CARD_INVOICE_PAYMENT_CATEGORY, $session->state);
+        $this->assertSame(ConversationSession::STATE_CARD_INVOICE_PAYMENT_AMOUNT, $session->state);
         $this->assertSame(1, (int) $session->context(ConversationSession::CONTEXT_DRAFT . '.payment_method_id'));
+
+        $amountEvent = $this->processMessage('300');
+        $session->refresh();
+
+        $this->assertSame('in_progress', data_get($amountEvent->normalized_payload_json, 'card_invoice_payment_flow.status'));
+        $this->assertSame(ConversationSession::STATE_CARD_INVOICE_PAYMENT_CATEGORY, $session->state);
+        $this->assertSame(300.0, (float) $session->context(ConversationSession::CONTEXT_DRAFT . '.amount_paid'));
 
         $categoryEvent = $this->processMessage('2');
         $session->refresh();
@@ -161,6 +168,54 @@ class TelegramInvoicePaymentFlowTest extends TestCase
             'pay_day' => '2026-03-10',
             'payment_transaction_id' => $paymentTransactionId,
             'amount_paid' => 300.00,
+        ]);
+    }
+
+    public function test_user_can_pay_partial_invoice_amount_through_chatbot_flow(): void
+    {
+        $purchase = Transaction::factory()->create([
+            'id' => 109,
+            'user_id' => $this->user->id,
+            'category_id' => $this->expenseCategory->id,
+            'type_id' => 2,
+            'payment_method_id' => 4,
+            'transaction_description' => 'Compra cartao parcial',
+            'date' => '2026-03-02',
+            'transaction_value' => 300,
+            'card_id' => $this->card->id,
+            'installments' => 1,
+        ]);
+
+        Installment::create([
+            'transaction_id' => $purchase->id,
+            'installment_description' => 'Compra cartao parcial 1/1',
+            'installment_value' => 300,
+            'card_id' => $this->card->id,
+            'pay_day' => '2026-03-10',
+            'paid_at' => null,
+            'payment_transaction_id' => null,
+        ]);
+
+        $this->seedCardDetailsConversation('2026-03-10', '2026-03-05', 300);
+
+        $this->processMessage('2');
+        $this->processMessage('1');
+        $this->processMessage('150,50');
+        $this->processMessage('2');
+        $confirmEvent = $this->processMessage('1');
+
+        $paymentTransactionId = (int) data_get($confirmEvent->normalized_payload_json, 'card_invoice_payment_flow.result.payment_transaction_id');
+
+        $this->assertDatabaseHas('transactions', [
+            'id' => $paymentTransactionId,
+            'transaction_value' => 150.50,
+        ]);
+
+        $this->assertDatabaseHas('card_invoice_payments', [
+            'card_id' => $this->card->id,
+            'pay_day' => '2026-03-10',
+            'payment_transaction_id' => $paymentTransactionId,
+            'amount_paid' => 150.50,
         ]);
     }
 

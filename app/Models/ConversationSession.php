@@ -16,6 +16,7 @@ class ConversationSession extends Model
     public const STATE_CARD_INVOICES = 'card_invoices';
     public const STATE_CARD_INVOICE_ITEMS = 'card_invoice_items';
     public const STATE_CARD_INVOICE_PAYMENT_METHOD = 'card_invoice_payment_method';
+    public const STATE_CARD_INVOICE_PAYMENT_AMOUNT = 'card_invoice_payment_amount';
     public const STATE_CARD_INVOICE_PAYMENT_CATEGORY = 'card_invoice_payment_category';
     public const STATE_CARD_INVOICE_PAYMENT_CONFIRM = 'card_invoice_payment_confirm';
     public const STATE_INVOICES_MENU = 'invoices_menu';
