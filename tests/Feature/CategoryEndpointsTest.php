@@ -100,7 +100,43 @@ class CategoryEndpointsTest extends TestCase
             ->assertJsonCount(1, 'data.categories')
             ->assertJsonPath('data.categories.0.id', $foodCategory->id)
             ->assertJsonPath('data.categories.0.category_description', 'Alimentacao')
-            ->assertJsonPath('data.categories.0.category_spending', 300);
+            ->assertJsonPath('data.categories.0.category_spending', 300)
+            ->assertJsonPath('data.categories.0.category_real_spending', 300);
+    }
+
+    public function test_show_categories_returns_real_spending_separate_from_credit_card_purchases(): void
+    {
+        $category = Category::factory()->create([
+            'user_id' => $this->user->id,
+            'type_id' => 2,
+            'category_description' => 'Compras',
+        ]);
+
+        Transaction::factory()->create([
+            'user_id' => $this->user->id,
+            'category_id' => $category->id,
+            'type_id' => 2,
+            'payment_method_id' => 4,
+            'transaction_description' => 'Compra no cartao',
+            'date' => '2026-03-12',
+            'transaction_value' => 500,
+        ]);
+
+        Transaction::factory()->create([
+            'user_id' => $this->user->id,
+            'category_id' => $category->id,
+            'type_id' => 2,
+            'payment_method_id' => 1,
+            'transaction_description' => 'Pagamento da categoria',
+            'date' => '2026-03-13',
+            'transaction_value' => 200,
+        ]);
+
+        $this->getJson('/api/categories')
+            ->assertOk()
+            ->assertJsonCount(1, 'data.categories')
+            ->assertJsonPath('data.categories.0.category_spending', 700)
+            ->assertJsonPath('data.categories.0.category_real_spending', 200);
     }
 
     public function test_show_categories_by_type_returns_only_authenticated_user_categories_of_requested_type(): void

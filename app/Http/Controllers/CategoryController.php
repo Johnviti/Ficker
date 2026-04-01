@@ -61,7 +61,17 @@ class CategoryController extends Controller
                 ->where('type_id', 2)
                 ->sum('transaction_value');
 
+            $categoryRealSpending = Transaction::whereMonth('date', now()->month)
+                ->where('category_id', $category->id)
+                ->where('type_id', 2)
+                ->where(function ($query) {
+                    $query->whereNull('payment_method_id')
+                        ->orWhere('payment_method_id', '!=', 4);
+                })
+                ->sum('transaction_value');
+
             $category->category_spending = $categorySpending;
+            $category->category_real_spending = $categoryRealSpending;
             $categories[] = $category;
         }
 
