@@ -57,11 +57,13 @@ class CategoryController extends Controller
 
         foreach (Auth::user()->categories as $category) {
             $categorySpending = Transaction::whereMonth('date', now()->month)
+                ->whereYear('date', now()->year)
                 ->where('category_id', $category->id)
                 ->where('type_id', 2)
                 ->sum('transaction_value');
 
             $categoryRealSpending = Transaction::whereMonth('date', now()->month)
+                ->whereYear('date', now()->year)
                 ->where('category_id', $category->id)
                 ->where('type_id', 2)
                 ->where(function ($query) {
