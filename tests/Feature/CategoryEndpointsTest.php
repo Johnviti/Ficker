@@ -207,4 +207,41 @@ class CategoryEndpointsTest extends TestCase
             ->assertStatus(404)
             ->assertJsonPath('message', 'Categoria nao encontrada.');
     }
+
+    public function test_update_category_limit_persists_limit_for_authenticated_user(): void
+    {
+        $category = Category::factory()->create([
+            'user_id' => $this->user->id,
+            'type_id' => 2,
+            'category_description' => 'Moradia',
+            'category_limit' => null,
+        ]);
+
+        $this->putJson("/api/categories/{$category->id}/limit", [
+            'category_limit' => 2450.75,
+            'keep_future' => true,
+        ])->assertOk()
+            ->assertJsonPath('data.category.id', $category->id)
+            ->assertJsonPath('data.category.category_limit', 2450.75);
+
+        $this->assertDatabaseHas('categories', [
+            'id' => $category->id,
+            'user_id' => $this->user->id,
+            'category_limit' => 2450.75,
+        ]);
+    }
+
+    public function test_update_category_limit_returns_not_found_for_category_outside_user_scope(): void
+    {
+        $otherCategory = Category::factory()->create([
+            'user_id' => $this->otherUser->id,
+            'type_id' => 2,
+            'category_description' => 'Privada',
+        ]);
+
+        $this->putJson("/api/categories/{$otherCategory->id}/limit", [
+            'category_limit' => 500,
+        ])->assertStatus(404)
+            ->assertJsonPath('message', 'Categoria nao encontrada.');
+    }
 }

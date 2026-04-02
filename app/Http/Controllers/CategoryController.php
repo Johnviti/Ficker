@@ -84,6 +84,37 @@ class CategoryController extends Controller
         ], 200);
     }
 
+    public function updateLimit(Request $request, int $id): JsonResponse
+    {
+        try {
+            $validated = $request->validate([
+                'category_limit' => ['required', 'numeric', 'min:0'],
+                'keep_future' => ['nullable', 'boolean'],
+            ], [
+                'category_limit.required' => 'Informe o valor da meta da categoria.',
+                'category_limit.numeric' => 'Informe um valor numerico valido para a meta.',
+                'category_limit.min' => 'A meta da categoria nao pode ser negativa.',
+            ]);
+
+            $category = Category::where('user_id', Auth::id())->find($id);
+
+            if (!$category) {
+                return $this->errorResponse('Categoria nao encontrada.', 404);
+            }
+
+            $category->category_limit = (float) $validated['category_limit'];
+            $category->save();
+
+            return response()->json([
+                'data' => [
+                    'category' => $category,
+                ],
+            ], 200);
+        } catch (ValidationException $e) {
+            return $this->errorResponse('Os dados informados sao invalidos.', 422, $e->errors());
+        }
+    }
+
     public function showCategoriesByType($id): JsonResponse
     {
         if (!in_array((int) $id, [1, 2, 3], true)) {

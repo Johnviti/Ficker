@@ -38,6 +38,7 @@ Route::middleware(['auth:sanctum'])->group(function () {
     Route::get('/categories', [CategoryController::class, 'showCategories']);
     Route::get('/categories/{id}', [CategoryController::class, 'showCategory']);
     Route::get('/categories/type/{id}', [CategoryController::class, 'showCategoriesByType']);
+    Route::put('/categories/{id}/limit', [CategoryController::class, 'updateLimit']);
 
     Route::post('/card', [CardController::class, 'store']);
     Route::get('/cards', [CardController::class, 'showCards']);
