@@ -159,15 +159,45 @@ class AnalysisService
 
         return $cards->map(function (Card $card) use ($filters) {
             $invoiceSummaries = $this->cardInvoiceSummaryService->summariesForCard($card);
-            $currentInvoice = collect($invoiceSummaries)->first(fn (array $summary) => ($summary['open_total'] ?? 0) > 0);
-
+            $invoiceSummariesCollection = collect($invoiceSummaries);
+            $currentInvoice = $invoiceSummariesCollection->first(fn (array $summary) => ($summary['open_total'] ?? 0) > 0);
             $currentInvoicePayDay = $currentInvoice['pay_day'] ?? null;
+            $nextInvoice = $invoiceSummariesCollection->first(function (array $summary) use ($currentInvoicePayDay) {
+                $summaryPayDay = $summary['pay_day'] ?? null;
+
+                if (empty($summaryPayDay) || (float) ($summary['total'] ?? 0) <= 0) {
+                    return false;
+                }
+
+                if (is_null($currentInvoicePayDay)) {
+                    return true;
+                }
+
+                return $summaryPayDay > $currentInvoicePayDay;
+            });
+
             $currentInvoiceClosureDate = isset($currentInvoice['closure_date'])
                 ? Carbon::parse($currentInvoice['closure_date'], self::TIMEZONE)
                 : null;
+            $currentInvoiceOriginalTotal = (float) ($currentInvoice['total'] ?? 0);
+            $currentInvoicePaidTotal = (float) ($currentInvoice['paid_total'] ?? 0);
             $currentInvoiceTotal = (float) ($currentInvoice['open_total'] ?? 0);
-            $openInvoiceTotal = (float) collect($invoiceSummaries)->sum('open_total');
+            $openInvoiceTotal = (float) $invoiceSummariesCollection->sum('open_total');
             $futureCommitmentTotal = max($openInvoiceTotal - $currentInvoiceTotal, 0);
+            $invoicesInPeriod = $invoiceSummariesCollection->filter(function (array $summary) use ($filters) {
+                $payDay = $summary['pay_day'] ?? null;
+
+                return !is_null($payDay)
+                    && $payDay >= $filters['date_from']
+                    && $payDay <= $filters['date_to'];
+            });
+            $invoicesDueTotalInPeriod = (float) $invoicesInPeriod->sum('total');
+            $invoicesSettledTotalInPeriod = (float) $invoicesInPeriod->sum(function (array $summary) {
+                return min(
+                    (float) ($summary['paid_total'] ?? 0),
+                    (float) ($summary['total'] ?? 0)
+                );
+            });
 
             $purchasesTotalInPeriod = (float) DB::table('transactions')
                 ->where('user_id', $card->user_id)
@@ -184,6 +214,28 @@ class AnalysisService
                 ->where('type_id', 2)
                 ->where('payment_method_id', 4)
                 ->count();
+
+            $largestPurchaseInPeriod = DB::table('transactions')
+                ->where('user_id', $card->user_id)
+                ->where('card_id', $card->id)
+                ->whereBetween('date', [$filters['date_from'], $filters['date_to']])
+                ->where('type_id', 2)
+                ->where('payment_method_id', 4)
+                ->orderByDesc('transaction_value')
+                ->orderByDesc('date')
+                ->select('transaction_value', 'date', 'transaction_description')
+                ->first();
+
+            $latestPurchaseInPeriod = DB::table('transactions')
+                ->where('user_id', $card->user_id)
+                ->where('card_id', $card->id)
+                ->whereBetween('date', [$filters['date_from'], $filters['date_to']])
+                ->where('type_id', 2)
+                ->where('payment_method_id', 4)
+                ->orderByDesc('date')
+                ->orderByDesc('id')
+                ->select('transaction_value', 'date', 'transaction_description')
+                ->first();
 
             $invoicePaymentsTotalInPeriod = (float) CardInvoicePayment::query()
                 ->join('transactions as payment', 'payment.id', '=', 'card_invoice_payments.payment_transaction_id')
@@ -227,6 +279,12 @@ class AnalysisService
                     ? null
                     : Carbon::parse($currentInvoicePayDay, self::TIMEZONE)->toDateString(),
                 'current_invoice_closure_date' => $currentInvoiceClosureDate?->toDateString(),
+                'current_invoice_original_total' => $currentInvoiceOriginalTotal,
+                'current_invoice_paid_total' => $currentInvoicePaidTotal,
+                'next_invoice_pay_day' => isset($nextInvoice['pay_day'])
+                    ? Carbon::parse($nextInvoice['pay_day'], self::TIMEZONE)->toDateString()
+                    : null,
+                'next_invoice_total' => (float) ($nextInvoice['total'] ?? 0),
                 'current_invoice_total' => $currentInvoiceTotal,
                 'open_invoice_total' => $openInvoiceTotal,
                 'future_commitment_total' => $futureCommitmentTotal,
@@ -237,6 +295,17 @@ class AnalysisService
                 'current_invoice_status' => $currentInvoice['status'] ?? 'no_invoice',
                 'purchases_total_in_period' => $purchasesTotalInPeriod,
                 'purchases_count_in_period' => $purchasesCountInPeriod,
+                'average_purchase_in_period' => $purchasesCountInPeriod > 0
+                    ? round($purchasesTotalInPeriod / $purchasesCountInPeriod, 2)
+                    : 0.0,
+                'largest_purchase_in_period' => (float) ($largestPurchaseInPeriod->transaction_value ?? 0),
+                'largest_purchase_date_in_period' => $largestPurchaseInPeriod->date ?? null,
+                'largest_purchase_description_in_period' => $largestPurchaseInPeriod->transaction_description ?? null,
+                'latest_purchase_in_period' => (float) ($latestPurchaseInPeriod->transaction_value ?? 0),
+                'latest_purchase_date_in_period' => $latestPurchaseInPeriod->date ?? null,
+                'latest_purchase_description_in_period' => $latestPurchaseInPeriod->transaction_description ?? null,
+                'invoices_due_total_in_period' => $invoicesDueTotalInPeriod,
+                'invoices_settled_total_in_period' => $invoicesSettledTotalInPeriod,
                 'invoice_payments_total_in_period' => $invoicePaymentsTotalInPeriod + $legacyInvoicePaymentsTotalInPeriod,
                 'paid_invoices_count_in_period' => (int) ($paidInvoicesCountInPeriod ?? 0),
             ];
@@ -315,6 +384,8 @@ class AnalysisService
             $invoicePaymentTotal = (float) ($row->invoice_payment_total ?? 0);
             $expenseCompositionTotal = $realSpendingTotal + $creditCardPurchaseTotal;
             $overallExpenseBase = $totals['real_spending_total'] + $totals['credit_card_purchase_total'];
+            $purchaseCompositionTotal = max($realSpendingTotal - $invoicePaymentTotal, 0) + $creditCardPurchaseTotal;
+            $overallPurchaseBase = max($overallExpenseBase - $totals['invoice_payment_total'], 0);
 
             return [
                 'category_id' => (int) ($row->category_id ?? 0),
@@ -324,9 +395,13 @@ class AnalysisService
                 'credit_card_purchase_total' => $creditCardPurchaseTotal,
                 'invoice_payment_total' => $invoicePaymentTotal,
                 'expense_composition_total' => $expenseCompositionTotal,
+                'purchase_composition_total' => $purchaseCompositionTotal,
                 'total_transactions_count' => (int) ($row->total_transactions_count ?? 0),
                 'expense_composition_percentage' => $overallExpenseBase > 0
                     ? round(($expenseCompositionTotal / $overallExpenseBase) * 100, 2)
+                    : 0.0,
+                'purchase_composition_percentage' => $overallPurchaseBase > 0
+                    ? round(($purchaseCompositionTotal / $overallPurchaseBase) * 100, 2)
                     : 0.0,
             ];
         })->values()->all();
@@ -369,6 +444,103 @@ class AnalysisService
                     : 0.0,
             ],
         ];
+    }
+
+    public function buildPaymentMethods(int $userId, array $filters): array
+    {
+        $rows = DB::table('transactions as t')
+            ->leftJoin('categories as c', 'c.id', '=', 't.category_id')
+            ->leftJoin('payment_methods as pm', 'pm.id', '=', 't.payment_method_id')
+            ->where('t.user_id', $userId)
+            ->whereBetween('t.date', [$filters['date_from'], $filters['date_to']])
+            ->where('t.type_id', 2)
+            ->where(function ($query) {
+                $this->applyNonInvoicePaymentFilter($query);
+            })
+            ->when($filters['card_id'], function ($query, $cardId) {
+                $query->where('t.card_id', $cardId);
+            })
+            ->when($filters['category_id'], function ($query, $categoryId) {
+                $query->where('t.category_id', $categoryId);
+            })
+            ->selectRaw('
+                COALESCE(t.payment_method_id, 0) as payment_method_id,
+                COALESCE(pm.payment_method_description, ?) as payment_method_description,
+                COALESCE(SUM(t.transaction_value), 0) as total_value,
+                COUNT(*) as total_transactions_count
+            ', ['Não informado'])
+            ->groupBy('t.payment_method_id', 'pm.payment_method_description')
+            ->orderByDesc('total_value')
+            ->get();
+
+        return $this->mapPaymentMethodRows($rows);
+    }
+
+    public function buildInvoicePaymentMethods(int $userId, array $filters): array
+    {
+        $rows = DB::table('transactions as t')
+            ->leftJoin('categories as c', 'c.id', '=', 't.category_id')
+            ->leftJoin('payment_methods as pm', 'pm.id', '=', 't.payment_method_id')
+            ->where('t.user_id', $userId)
+            ->whereBetween('t.date', [$filters['date_from'], $filters['date_to']])
+            ->where('t.type_id', 2)
+            ->where(function ($query) {
+                $this->applyInvoicePaymentFilter($query);
+            })
+            ->when($filters['card_id'], function ($query, $cardId) {
+                $query->where('t.card_id', $cardId);
+            })
+            ->when($filters['category_id'], function ($query, $categoryId) {
+                $query->where('t.category_id', $categoryId);
+            })
+            ->selectRaw('
+                COALESCE(t.payment_method_id, 0) as payment_method_id,
+                COALESCE(pm.payment_method_description, ?) as payment_method_description,
+                COALESCE(SUM(t.transaction_value), 0) as total_value,
+                COUNT(*) as total_transactions_count
+            ', ['NÃ£o informado'])
+            ->groupBy('t.payment_method_id', 'pm.payment_method_description')
+            ->orderByDesc('total_value')
+            ->get();
+
+        return $this->mapPaymentMethodRows($rows);
+    }
+
+    private function mapPaymentMethodRows(Collection $rows): array
+    {
+        $overallTotal = (float) $rows->sum('total_value');
+
+        return $rows->map(function ($row) use ($overallTotal) {
+            $totalValue = (float) ($row->total_value ?? 0);
+
+            return [
+                'payment_method_id' => (int) ($row->payment_method_id ?? 0),
+                'payment_method_description' => $row->payment_method_description,
+                'total_value' => $totalValue,
+                'total_transactions_count' => (int) ($row->total_transactions_count ?? 0),
+                'percentage' => $overallTotal > 0
+                    ? round(($totalValue / $overallTotal) * 100, 2)
+                    : 0.0,
+            ];
+        })->values()->all();
+    }
+
+    private function applyInvoicePaymentFilter($query): void
+    {
+        $query->where(function ($nestedQuery) {
+            $nestedQuery
+                ->where('c.category_description', 'Pagamento de fatura')
+                ->orWhere('t.transaction_description', 'like', 'Pagamento fatura - %');
+        });
+    }
+
+    private function applyNonInvoicePaymentFilter($query): void
+    {
+        $query->where(function ($nestedQuery) {
+            $nestedQuery
+                ->whereNull('c.category_description')
+                ->orWhere('c.category_description', '!=', 'Pagamento de fatura');
+        })->where('t.transaction_description', 'not like', 'Pagamento fatura - %');
     }
 
     public function buildTopExpenses(int $userId, array $filters, int $limit = 10): array

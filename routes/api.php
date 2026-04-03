@@ -63,6 +63,8 @@ Route::middleware(['auth:sanctum'])->group(function () {
         Route::get('/invoices', [AnalysisController::class, 'invoices']);
         Route::get('/categories', [AnalysisController::class, 'categories']);
         Route::get('/composition', [AnalysisController::class, 'composition']);
+        Route::get('/payment-methods', [AnalysisController::class, 'paymentMethods']);
+        Route::get('/invoice-payment-methods', [AnalysisController::class, 'invoicePaymentMethods']);
         Route::get('/top-expenses', [AnalysisController::class, 'topExpenses']);
     });
 

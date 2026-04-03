@@ -115,6 +115,40 @@ class AnalysisController extends Controller
         }
     }
 
+    public function paymentMethods(Request $request): JsonResponse
+    {
+        try {
+            $filters = $this->resolveFilters($request);
+
+            return response()->json([
+                'data' => [
+                    'payment_methods' => $this->analysisService->buildPaymentMethods(Auth::id(), $filters),
+                ],
+                'filters' => $filters,
+                'meta' => $this->analysisService->buildMeta($filters),
+            ], 200);
+        } catch (ValidationException $e) {
+            return $this->errorResponse('Os filtros informados sao invalidos.', 422, $e->errors());
+        }
+    }
+
+    public function invoicePaymentMethods(Request $request): JsonResponse
+    {
+        try {
+            $filters = $this->resolveFilters($request);
+
+            return response()->json([
+                'data' => [
+                    'payment_methods' => $this->analysisService->buildInvoicePaymentMethods(Auth::id(), $filters),
+                ],
+                'filters' => $filters,
+                'meta' => $this->analysisService->buildMeta($filters),
+            ], 200);
+        } catch (ValidationException $e) {
+            return $this->errorResponse('Os filtros informados sao invalidos.', 422, $e->errors());
+        }
+    }
+
     public function topExpenses(Request $request): JsonResponse
     {
         try {
